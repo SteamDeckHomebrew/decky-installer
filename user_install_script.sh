@@ -89,7 +89,7 @@ echo "15" ; echo "# Creating file structure" ;
 rm -rf "${HOMEBREW_FOLDER}/services"
 sudo -u $SUDO_USER  mkdir -p "${HOMEBREW_FOLDER}/services"
 sudo -u $SUDO_USER  mkdir -p "${HOMEBREW_FOLDER}/plugins"
-touch "${USER_DIR}/.steam/steam/.cef-enable-remote-debugging"
+sudo -u $SUDO_USER  touch "${USER_DIR}/.steam/steam/.cef-enable-remote-debugging"
 
 echo "30" ; echo "# Finding latest $BRANCH";
 if [ $BRANCH = 'prerelease' ] ; then
