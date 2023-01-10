@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 
 # if a password was set by decky, this will run when the program closes
 temp_pass_cleanup() {
@@ -39,15 +39,14 @@ if (( $EUID != 0 )); then
     fi
 
     # get user dir before rerunning as root, otherwise it'll just be 'home/root'
-    USER_DIR="$(getent passwd $USER | cut -d: -f6)"
-    HOMEBREW_FOLDER="${USER_DIR}/homebrew"
-    echo "$PASS" | sudo -S -k sh "$0" "$USER_DIR" "$HOMEBREW_FOLDER" # rerun script as root
+    
+    echo "$PASS" | sudo -S -k bash "$0" "$@" # rerun script as root
     exit 1
 fi
 
 # all code below should be run as root
-USER_DIR=$1
-HOMEBREW_FOLDER=$2
+USER_DIR="$(getent passwd $SUDO_USER | cut -d: -f6)"
+HOMEBREW_FOLDER="${USER_DIR}/homebrew"
 
 # if decky is already installed, then also add an 'uninstall' prompt
 if [[ -f "${USER_DIR}/homebrew/services/PluginLoader" ]] ; then
