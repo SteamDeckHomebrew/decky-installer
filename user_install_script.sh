@@ -61,17 +61,21 @@ fi
 # uninstall if uninstall option was selected
 if [ "$BRANCH" == "uninstall decky loader" ] ; then
     (
-    echo "30" ; echo "# Disabling and removing services" ;
+    echo "20" ; echo "# Disabling and removing services" ;
     sudo systemctl disable --now plugin_loader.service > /dev/null
     sudo rm -f "${USER_DIR}/.config/systemd/user/plugin_loader.service"
     sudo rm -f "/etc/systemd/system/plugin_loader.service"
 
-    echo "60" ; echo "# Removing Temporary Files" ;
+    echo "40" ; echo "# Removing Temporary Files" ;
     rm -rf "/tmp/plugin_loader"
     rm -rf "/tmp/user_install_script.sh"
 
-    echo "90" ; echo "# Cleaning services folder" ;
+    echo "60" ; echo "# Cleaning services folder" ;
     sudo rm "${HOMEBREW_FOLDER}/services/PluginLoader"
+
+    echo "80" ; echo "# Disabling CEF debugging" ;
+    sudo rm "${USER_DIR}/.steam/steam/.cef-enable-remote-debugging"
+
     echo "100" ; echo "# Uninstall finished, installer can now be closed";
     ) |
     zenity --progress \
