@@ -2,15 +2,15 @@ name: "release"
 
 on:
   push:
-    branches:
-      - main
+    tags:
+      - "*"
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v1
-      - name: "find env"
+      - name: Checkout 🧰
+        uses: actions/checkout@v3
 
       - uses: xresloader/upload-to-github-release@main
         env:
