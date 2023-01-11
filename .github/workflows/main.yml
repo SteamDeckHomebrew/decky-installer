@@ -21,5 +21,5 @@ jobs:
           repo_token: "${{ secrets.GITHUB_TOKEN }}"
           prerelease: false
           files: |
-            LICENSE.txt
-            *.jar
+            ${{ github.workspace }}/gui/decky_installer.desktop
+            ${{ github.workspace }}/gui/user_install_script.sh
