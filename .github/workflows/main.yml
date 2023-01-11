@@ -17,7 +17,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tag_name: ${{ github.ref }}
-          draft: true
+          draft: false
           update_latest_release: true
           file: "${{ github.workspace }}/gui/decky_installer.desktop;${{ github.workspace }}/gui/user_install_script.sh"
           verbose: true
