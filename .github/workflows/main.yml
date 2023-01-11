@@ -1,25 +1,23 @@
-name: "tagged-release"
+name: "release"
 
 on:
   push:
-    tags:
-      - "v*"
+    branches:
+      - main
 
 jobs:
-  tagged-release:
-    name: "Tagged Release"
-    runs-on: "ubuntu-latest"
-
+  build:
+    runs-on: ubuntu-latest
     steps:
-      # ...
-      - name: "Build & test"
-        run: |
-          echo "done!"
+      - uses: actions/checkout@v1
+      - name: "find env"
 
-      - uses: "marvinpinto/action-automatic-releases@latest"
+      - uses: xresloader/upload-to-github-release@main
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          repo_token: "${{ secrets.GITHUB_TOKEN }}"
-          prerelease: false
-          files: |
-            ${{ github.workspace }}/gui/decky_installer.desktop
-            ${{ github.workspace }}/gui/user_install_script.sh
+          file: "${{ github.workspace }}/gui/decky_installer.desktop;${{ github.workspace }}/gui/user_install_script.sh"
+          delete_file: "random-name-*.txt"
+          branches: "main;dev"
+          verbose: true
+          prerelease: true
