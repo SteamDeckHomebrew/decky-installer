@@ -17,7 +17,5 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           file: "${{ github.workspace }}/gui/decky_installer.desktop;${{ github.workspace }}/gui/user_install_script.sh"
-          delete_file: "random-name-*.txt"
-          branches: "main;dev"
           verbose: true
-          prerelease: true
+    
