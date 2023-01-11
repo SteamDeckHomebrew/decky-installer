@@ -1,17 +1,25 @@
-name: Main
+name: "tagged-release"
 
-on: push
+on:
+  push:
+    tags:
+      - "v*"
 
 jobs:
-  build:
-    runs-on: ubuntu-latest
+  tagged-release:
+    name: "Tagged Release"
+    runs-on: "ubuntu-latest"
+
     steps:
-      - name: Checkout
-        uses: actions/checkout@v3
-      - name: Release
-        uses: softprops/action-gh-release@v1
-        if: startsWith(github.ref, 'refs/tags/')
+      # ...
+      - name: "Build & test"
+        run: |
+          echo "done!"
+
+      - uses: "marvinpinto/action-automatic-releases@latest"
         with:
+          repo_token: "${{ secrets.GITHUB_TOKEN }}"
+          prerelease: false
           files: |
-            ${{ github.workspace }}/gui/decky_installer.desktop
-            ${{ github.workspace }}/gui/user_install_script.sh
+            LICENSE.txt
+            *.jar
