@@ -47,10 +47,11 @@ jobs:
           if [[ "${{github.event.inputs.bump}}" != "none" ]]; then
               OUT=$(semver bump ${{github.event.inputs.bump}} "$VERSION")
               printf "OUT: ${OUT}\n"
-            else
-              printf "previous tag is a release, but no bump selected. Defaulting to a patch bump.\n"
-              OUT=$(semver bump patch "$VERSION")
-              printf "OUT: ${OUT}\n"
+          else
+            printf "no bump selected. Defaulting to a patch bump.\n"
+            OUT=$(semver bump patch "$VERSION")
+            printf "OUT: ${OUT}\n"
+          fi
           echo "vOUT: v$OUT"
           echo tag_name=v$OUT >> $GITHUB_OUTPUT
       - name: Push tag 📤
