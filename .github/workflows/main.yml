@@ -71,6 +71,9 @@ jobs:
           files: |
             ${{ github.workspace }}/gui/decky_installer.desktop
             ${{ github.workspace }}/gui/user_install_script.sh
+            ${{ github.workspace }}/cli/install_prerelease.sh
+            ${{ github.workspace }}/cli/install_release.sh
+            ${{ github.workspace }}/cli/uninstall.sh
           prerelease: false
           generate_release_notes: true
           draft: true
