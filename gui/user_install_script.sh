@@ -159,7 +159,7 @@ systemctl enable plugin_loader
 # will likely be removed at some point in the future
 if [ "$SUDO_USER" =  "deck" ]; then
   sudo chown -R deck:deck /home/deck/homebrew
-  sudo chown -R root:root /home/wumpus/homebrew/services/*
+  sudo chown -R root:root /home/deck/homebrew/services/*
 fi
 
 echo "100" ; echo "# Install finished, installer can now be closed";
