@@ -94,7 +94,7 @@ rm -rf "${HOMEBREW_FOLDER}/services"
 sudo -u $SUDO_USER  mkdir -p "${HOMEBREW_FOLDER}/services"
 sudo -u $SUDO_USER  mkdir -p "${HOMEBREW_FOLDER}/plugins"
 sudo -u $SUDO_USER  touch "${USER_DIR}/.steam/steam/.cef-enable-remote-debugging"
-$SUDO_USER
+
 echo "30" ; echo "# Finding latest $BRANCH";
 if [ $BRANCH = 'prerelease' ] ; then
     RELEASE=$(curl -s 'https://api.github.com/repos/SteamDeckHomebrew/decky-loader/releases' | jq -r "first(.[] | select(.prerelease == "true"))")
@@ -158,8 +158,8 @@ systemctl enable plugin_loader
 # this (retroactively) fixes a bug where users who ran the installer would have homebrew owned by root instead of their user
 # will likely be removed at some point in the future
 if [ "$SUDO_USER" =  "deck" ]; then
-  sudo chown -R deck:deck /home/deck/homebrew
-  sudo chown -R root:root /home/deck/homebrew/services/*
+  sudo chown -R deck:deck "${HOMEBREW_FOLDER}"
+  sudo chown -R root:root "${HOMEBREW_FOLDER}"/services/*
 fi
 
 echo "100" ; echo "# Install finished, installer can now be closed";
