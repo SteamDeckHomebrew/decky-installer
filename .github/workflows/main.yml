@@ -73,11 +73,8 @@ jobs:
           name: Version ${{ steps.ready_tag.outputs.tag_name }}
           tag_name: ${{ steps.ready_tag.outputs.tag_name }}
           files: |
-            ${{ github.workspace }}/gui/decky_installer.desktop
-            ${{ github.workspace }}/gui/user_install_script.sh
-            ${{ github.workspace }}/cli/install_prerelease.sh
-            ${{ github.workspace }}/cli/install_release.sh
-            ${{ github.workspace }}/cli/uninstall.sh
+            ${{ github.workspace }}/gui/*
+            ${{ github.workspace }}/cli/*
           prerelease: false
           generate_release_notes: true
           draft: true
