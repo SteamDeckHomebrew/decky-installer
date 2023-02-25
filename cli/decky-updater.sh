@@ -1,13 +1,13 @@
 #!/bin/sh
 
 #If $1 is set, take that as input
-[[ -n "$1" ]] && release="$1"
+[ -n "$1" ] && release="$1"
 
 #Keep asking which release to install
 while true
 do
     #If $release is set by $1, take that as input
-    [[ -z "$release" ]] && read -p "Install stable or pre-release (s/p): " release
+    [ -z "$release" ] && read -p "Install stable or pre-release (s/p): " release
 
     #Only accept answers with S for stable or P for pre-release
     case $(echo "${release}" | tr '[:lower:]' '[:upper:]') in
