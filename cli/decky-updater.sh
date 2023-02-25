@@ -7,7 +7,7 @@
 while true
 do
     #If $release is set by $1, take that as input
-    [ -z "$release" ] && read -p "Install stable or pre-release (s/p): " release
+    [ -z "$release" ] && read -p "Install stable/pre-release or uninstall (s/p/u): " release
 
     #Only accept answers with S for stable or P for pre-release
     case $(echo "${release}" | tr '[:lower:]' '[:upper:]') in
@@ -19,6 +19,11 @@ do
     P*)
         echo "Installing pre-release"
         curl -L https://github.com/SteamDeckHomebrew/decky-installer/releases/latest/download/install_prerelease.sh | sh
+        exit 0
+        ;;
+    U*)
+        echo "Uninstalling decky"
+        curl -L https://github.com/SteamDeckHomebrew/decky-installer/releases/latest/download/uninstall.sh | sh
         exit 0
         ;;
     *)
