@@ -5,6 +5,14 @@ temp_pass_cleanup() {
   echo $PASS | sudo -S -k passwd -d deck
 }
 
+# check if JQ is installed
+if ! command -v jq &> /dev/null
+then
+    echo "JQ could not be found, please install it"
+    echo "Info on how to install it can be found at https://stedolan.github.io/jq/download/"
+    exit
+fi
+
 # if the script is not root yet, get the password and rerun as root
 if (( $EUID != 0 )); then
     PASS_STATUS=$(passwd -S deck 2> /dev/null)
