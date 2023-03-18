@@ -2,6 +2,14 @@
 
 [ "$UID" -eq 0 ] || exec sudo "$0" "$@"
 
+# check if JQ is installed
+if ! command -v jq &> /dev/null
+then
+    echo "JQ could not be found, please install it"
+    echo "Info on how to install it can be found at https://stedolan.github.io/jq/download/"
+    exit
+fi
+
 echo "Installing Steam Deck Plugin Loader release..."
 
 USER_DIR="$(getent passwd $SUDO_USER | cut -d: -f6)"
