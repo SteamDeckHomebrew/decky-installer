@@ -1,7 +1,7 @@
 #!/usr/bin/env xdg-open
 [Desktop Entry]
 Name=Install Decky
-Exec=sh -c 'curl -L -O --output-dir /tmp/ https://github.com/SteamDeckHomebrew/decky-installer/releases/latest/download/user_install_script.sh 2> /dev/null && bash /tmp/user_install_script.sh'
+Exec=sh -c 'if curl -S -s -L -O --output-dir /tmp/ --connect-timeout 15 https://github.com/SteamDeckHomebrew/decky-installer/releases/latest/download/user_install_script.sh; then bash /tmp/user_install_script.sh; else echo "Something went wrong, please report this bug"; read; fi'
 Icon=steamdeck-gaming-return
 Terminal=true
 Type=Application
