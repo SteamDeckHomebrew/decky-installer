@@ -5,10 +5,6 @@ temp_pass_cleanup() {
   echo $PASS | sudo -S -k passwd -d deck
 }
 
-# removes unhelpful GTK warnings
-zen_nospam() {
-  zenity 2> >(grep -v 'GtkDialog' >&2) "$@"
-}
 
 # check if JQ is installed
 if ! command -v jq &> /dev/null
@@ -26,7 +22,7 @@ if (( $EUID != 0 )); then
     fi
 
     if [ "${PASS_STATUS:5:2}" = "NP" ]; then # if no password is set
-        if ( zen_nospam --title="Decky Installer" --width=300 --height=200 --question --text="You appear to have not set an admin password.\nDecky can still install by temporarily setting your password to 'Decky!' and continuing, then removing it when the installer finishes\nAre you okay with that?" ); then
+        if ( zenity --title="Decky Installer" --width=300 --height=200 --question --text="You appear to have not set an admin password.\nDecky can still install by temporarily setting your password to 'Decky!' and continuing, then removing it when the installer finishes\nAre you okay with that?" 2> >(grep -v GtkDialog >&2)); then
             yes "Decky!" | passwd deck
             trap temp_pass_cleanup EXIT # make sure password is removed when application closes
             PASS="Decky!"
@@ -35,20 +31,20 @@ if (( $EUID != 0 )); then
         # get password
         FINISHED="false"
         while [ "$FINISHED" != "true" ]; do
-            PASS=$(zen_nospam --title="Decky Installer" --width=300 --height=100 --entry --hide-text --text="Enter your sudo/admin password")
+            PASS=$(zenity --title="Decky Installer" --width=300 --height=100 --entry --hide-text --text="Enter your sudo/admin password" 2> >(grep -v GtkDialog >&2))
             if [[ $? -eq 1 ]] || [[ $? -eq 5 ]]; then
                 exit 1
             fi
             if ( echo "$PASS" | sudo -S -k true ); then
                 FINISHED="true"
             else
-                zen_nospam --title="Decky Installer" --width=150 --height=40 --info --text "Incorrect Password"
+                zenity --title="Decky Installer" --width=150 --height=40 --info --text "Incorrect Password" 2> >(grep -v GtkDialog >&2)
             fi
         done
     fi
 
     if ! [ $USER = "deck" ]; then
-        zen_nospam --title="Decky Installer" --width=300 --height=100 --warning --text "You appear to not be on a deck.\nDecky should still mostly work, but you may not get full functionality."
+        zenity --title="Decky Installer" --width=300 --height=100 --warning --text "You appear to not be on a deck.\nDecky should still mostly work, but you may not get full functionality." 2> >(grep -v GtkDialog >&2)
     fi
 
     # get user dir before rerunning as root, otherwise it'll just be 'home/root'
@@ -63,9 +59,9 @@ HOMEBREW_FOLDER="${USER_DIR}/homebrew"
 
 # if decky is already installed, then also add an 'uninstall' prompt
 if [[ -f "${USER_DIR}/homebrew/services/PluginLoader" ]] ; then
-    BRANCH=$(zen_nospam --title="Decky Installer" --width=360 --height=170 --list --radiolist --text "Select Option:" --hide-header --column "Buttons" --column "Choice" --column "Info" TRUE "release" "(Recommended option)" FALSE "prerelease" "(May be unstable)" FALSE "uninstall decky loader" "")
+    BRANCH=$(zenity --title="Decky Installer" --width=360 --height=170 --list --radiolist --text "Select Option:" --hide-header --column "Buttons" --column "Choice" --column "Info" TRUE "release" "(Recommended option)" FALSE "prerelease" "(May be unstable)" FALSE "uninstall decky loader" "" 2> >(grep -v GtkDialog >&2))
 else
-    BRANCH=$(zen_nospam --title="Decky Installer" --width=300 --height=100 --list --radiolist --text "Select Branch:" --hide-header --column "Buttons" --column "Choice" --column "Info" TRUE "release" "(Recommended option)" FALSE "prerelease" "(May be unstable)" )
+    BRANCH=$(zenity --title="Decky Installer" --width=300 --height=100 --list --radiolist --text "Select Branch:" --hide-header --column "Buttons" --column "Choice" --column "Info" TRUE "release" "(Recommended option)" FALSE "prerelease" "(May be unstable)" 2> >(grep -v GtkDialog >&2))
 fi
 if [[ $? -eq 1 ]] || [[ $? -eq 5 ]]; then
     exit 1
@@ -91,12 +87,12 @@ if [ "$BRANCH" == "uninstall decky loader" ] ; then
 
     echo "100" ; echo "# Uninstall finished, installer can now be closed";
     ) |
-    zen_nospam --progress \
+    zenity --progress \
   --title="Decky Installer" \
    --width=300 --height=100 \
   --text="Uninstalling..." \
   --percentage=0 \
-  --no-cancel
+  --no-cancel 2> >(grep -v GtkDialog >&2)
   exit 1
 fi
 
@@ -118,7 +114,7 @@ VERSION=$(jq -r '.tag_name' <<< ${RELEASE} )
 DOWNLOADURL=$(jq -r '.assets[].browser_download_url | select(endswith("PluginLoader"))' <<< ${RELEASE})
 
 echo "45" ; echo "# Installing version $VERSION" ;
-curl -L $DOWNLOADURL -o ${HOMEBREW_FOLDER}/services/PluginLoader 2>&1 | stdbuf -oL tr '\r' '\n' | sed -u 's/^ *\([0-9][0-9]*\).*\( [0-9].*$\)/\1\n#Download Speed\:\2/' | zen_nospam --progress --title "Downloading Decky" --text="Download Speed: 0" --width=300 --height=100 --auto-close --no-cancel
+curl -L $DOWNLOADURL -o ${HOMEBREW_FOLDER}/services/PluginLoader 2>&1 | stdbuf -oL tr '\r' '\n' | sed -u 's/^ *\([0-9][0-9]*\).*\( [0-9].*$\)/\1\n#Download Speed\:\2/' | zenity --progress --title "Downloading Decky" --text="Download Speed: 0" --width=300 --height=100 --auto-close --no-cancel 2> >(grep -v GtkDialog >&2)
 chmod +x ${HOMEBREW_FOLDER}/services/PluginLoader
 echo $VERSION > ${HOMEBREW_FOLDER}/services/.loader.version
 
@@ -177,13 +173,14 @@ fi
 
 echo "100" ; echo "# Install finished, installer can now be closed";
 ) |
-zen_nospam --progress \
+zenity --progress \
   --title="Decky Installer" \
   --width=300 --height=100 \
   --text="Installing..." \
   --percentage=0 \
-  --no-cancel # not actually sure how to make the cancel work properly, so it's just not there unless someone else can figure it out
+  --no-cancel \  # not actually sure how to make the cancel work properly, so it's just not there unless someone else can figure it out
+  2> >(grep -v GtkDialog >&2)
 
 if [ "$?" = -1 ] ; then
-        zen_nospam --title="Decky Installer" --width=150 --height=70 --error --text="Download interrupted."
+        zenity --title="Decky Installer" --width=150 --height=70 --error --text="Download interrupted." 2> >(grep -v GtkDialog >&2)
 fi
