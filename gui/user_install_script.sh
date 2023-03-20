@@ -18,6 +18,13 @@ then
     exit
 fi
 
+# check if github.com is reachable
+if ! curl -Is https://github.com | head -1 | grep 200 > /dev/null
+then
+    echo "Github appears to be unreachable, you may not be connected to the internet"
+    exit 1
+fi
+
 # if the script is not root yet, get the password and rerun as root
 if (( $EUID != 0 )); then
     PASS_STATUS=$(passwd -S deck 2> /dev/null)
