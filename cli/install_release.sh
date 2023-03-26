@@ -10,6 +10,13 @@ then
     exit
 fi
 
+# check if github.com is reachable
+if ! curl -Is https://github.com | head -1 | grep 200 > /dev/null
+then
+    echo "Github appears to be unreachable, you may not be connected to the internet"
+    exit 1
+fi
+
 echo "Installing Steam Deck Plugin Loader release..."
 
 USER_DIR="$(getent passwd $SUDO_USER | cut -d: -f6)"

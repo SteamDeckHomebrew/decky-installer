@@ -5,12 +5,24 @@ temp_pass_cleanup() {
   echo $PASS | sudo -S -k passwd -d deck
 }
 
+# removes unhelpful GTK warnings
+zen_nospam() {
+  zenity 2> >(grep -v 'Gtk' >&2) "$@"
+}
+
 # check if JQ is installed
 if ! command -v jq &> /dev/null
 then
     echo "JQ could not be found, please install it"
     echo "Info on how to install it can be found at https://stedolan.github.io/jq/download/"
     exit
+fi
+
+# check if github.com is reachable
+if ! curl -Is https://github.com | head -1 | grep 200 > /dev/null
+then
+    echo "Github appears to be unreachable, you may not be connected to the internet"
+    exit 1
 fi
 
 # if the script is not root yet, get the password and rerun as root
@@ -21,7 +33,7 @@ if (( $EUID != 0 )); then
     fi
 
     if [ "${PASS_STATUS:5:2}" = "NP" ]; then # if no password is set
-        if ( zenity --title="Decky Installer" --width=300 --height=200 --question --text="You appear to have not set an admin password.\nDecky can still install by temporarily setting your password to 'Decky!' and continuing, then removing it when the installer finishes\nAre you okay with that?" ); then
+        if ( zen_nospam --title="Decky Installer" --width=300 --height=200 --question --text="You appear to have not set an admin password.\nDecky can still install by temporarily setting your password to 'Decky!' and continuing, then removing it when the installer finishes\nAre you okay with that?" ); then
             yes "Decky!" | passwd deck
             trap temp_pass_cleanup EXIT # make sure password is removed when application closes
             PASS="Decky!"
@@ -30,24 +42,24 @@ if (( $EUID != 0 )); then
         # get password
         FINISHED="false"
         while [ "$FINISHED" != "true" ]; do
-            PASS=$(zenity --title="Decky Installer" --width=300 --height=100 --entry --hide-text --text="Enter your sudo/admin password")
+            PASS=$(zen_nospam --title="Decky Installer" --width=300 --height=100 --entry --hide-text --text="Enter your sudo/admin password")
             if [[ $? -eq 1 ]] || [[ $? -eq 5 ]]; then
                 exit 1
             fi
             if ( echo "$PASS" | sudo -S -k true ); then
                 FINISHED="true"
             else
-                zenity --title="Decky Installer" --width=150 --height=40 --info --text "Incorrect Password"
+                zen_nospam --title="Decky Installer" --width=150 --height=40 --info --text "Incorrect Password"
             fi
         done
     fi
 
     if ! [ $USER = "deck" ]; then
-        zenity --title="Decky Installer" --width=300 --height=100 --warning --text "You appear to not be on a deck.\nDecky should still mostly work, but you may not get full functionality."
+        zen_nospam --title="Decky Installer" --width=300 --height=100 --warning --text "You appear to not be on a deck.\nDecky should still mostly work, but you may not get full functionality."
     fi
 
     # get user dir before rerunning as root, otherwise it'll just be 'home/root'
-    
+
     echo "$PASS" | sudo -S -k bash "$0" "$@" # rerun script as root
     exit 1
 fi
@@ -58,9 +70,9 @@ HOMEBREW_FOLDER="${USER_DIR}/homebrew"
 
 # if decky is already installed, then also add an 'uninstall' prompt
 if [[ -f "${USER_DIR}/homebrew/services/PluginLoader" ]] ; then
-    BRANCH=$(zenity --title="Decky Installer" --width=360 --height=170 --list --radiolist --text "Select Option:" --hide-header --column "Buttons" --column "Choice" --column "Info" TRUE "release" "(Recommended option)" FALSE "prerelease" "(May be unstable)" FALSE "uninstall decky loader" "")
+    BRANCH=$(zen_nospam --title="Decky Installer" --width=360 --height=170 --list --radiolist --text "Select Option:" --hide-header --column "Buttons" --column "Choice" --column "Info" TRUE "release" "(Recommended option)" FALSE "prerelease" "(May be unstable)" FALSE "uninstall decky loader" "")
 else
-    BRANCH=$(zenity --title="Decky Installer" --width=300 --height=100 --list --radiolist --text "Select Branch:" --hide-header --column "Buttons" --column "Choice" --column "Info" TRUE "release" "(Recommended option)" FALSE "prerelease" "(May be unstable)" )
+    BRANCH=$(zen_nospam --title="Decky Installer" --width=300 --height=100 --list --radiolist --text "Select Branch:" --hide-header --column "Buttons" --column "Choice" --column "Info" TRUE "release" "(Recommended option)" FALSE "prerelease" "(May be unstable)" )
 fi
 if [[ $? -eq 1 ]] || [[ $? -eq 5 ]]; then
     exit 1
@@ -86,7 +98,7 @@ if [ "$BRANCH" == "uninstall decky loader" ] ; then
 
     echo "100" ; echo "# Uninstall finished, installer can now be closed";
     ) |
-    zenity --progress \
+    zen_nospam --progress \
   --title="Decky Installer" \
    --width=300 --height=100 \
   --text="Uninstalling..." \
@@ -113,15 +125,15 @@ VERSION=$(jq -r '.tag_name' <<< ${RELEASE} )
 DOWNLOADURL=$(jq -r '.assets[].browser_download_url | select(endswith("PluginLoader"))' <<< ${RELEASE})
 
 echo "45" ; echo "# Installing version $VERSION" ;
-curl -L $DOWNLOADURL -o ${HOMEBREW_FOLDER}/services/PluginLoader 2>&1 | stdbuf -oL tr '\r' '\n' | sed -u 's/^ *\([0-9][0-9]*\).*\( [0-9].*$\)/\1\n#Download Speed\:\2/' | zenity --progress --title "Downloading Decky" --text="Download Speed: 0" --width=300 --height=100 --auto-close --no-cancel 2>/dev/null
+curl -L $DOWNLOADURL -o ${HOMEBREW_FOLDER}/services/PluginLoader 2>&1 | stdbuf -oL tr '\r' '\n' | sed -u 's/^ *\([0-9][0-9]*\).*\( [0-9].*$\)/\1\n#Download Speed\:\2/' | zen_nospam --progress --title "Downloading Decky" --text="Download Speed: 0" --width=300 --height=100 --auto-close --no-cancel
 chmod +x ${HOMEBREW_FOLDER}/services/PluginLoader
 echo $VERSION > ${HOMEBREW_FOLDER}/services/.loader.version
 
 echo "70" ; echo "# Kiling plugin_loader if it exists" ;
-systemctl --user stop plugin_loader 2> /dev/null
-systemctl --user disable plugin_loader 2> /dev/null
-systemctl stop plugin_loader 2> /dev/null
-systemctl disable plugin_loader 2> /dev/null
+systemctl --user stop plugin_loader
+systemctl --user disable plugin_loader
+systemctl stop plugin_loader
+systemctl disable plugin_loader
 
 echo "85" ; echo "# Setting up systemd" ;
 curl -L https://raw.githubusercontent.com/SteamDeckHomebrew/decky-loader/main/dist/plugin_loader-${BRANCH}.service  --output ${HOMEBREW_FOLDER}/services/plugin_loader-${BRANCH}.service
@@ -172,7 +184,7 @@ fi
 
 echo "100" ; echo "# Install finished, installer can now be closed";
 ) |
-zenity --progress \
+zen_nospam --progress \
   --title="Decky Installer" \
   --width=300 --height=100 \
   --text="Installing..." \
@@ -180,5 +192,5 @@ zenity --progress \
   --no-cancel # not actually sure how to make the cancel work properly, so it's just not there unless someone else can figure it out
 
 if [ "$?" = -1 ] ; then
-        zenity --title="Decky Installer" --width=150 --height=70 --error --text="Download interrupted."
+        zen_nospam --title="Decky Installer" --width=150 --height=70 --error --text="Download interrupted."
 fi
