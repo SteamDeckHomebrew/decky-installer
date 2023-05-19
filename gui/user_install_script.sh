@@ -76,7 +76,7 @@ if [[ -f "${USER_DIR}/homebrew/services/PluginLoader" ]] ; then
     FALSE "uninstall decky loader" "Will keep config intact" \
     FALSE "wipe decky loader" "Will NOT keep config intact")
 else
-    OPTION=$(zen_nospam --title="Decky Installer" --width=300 --height=100 --list --radiolist --text "Select Branch:" --hide-header --column "Buttons" --column "Choice" --column "Info" \
+    OPTION=$(zen_nospam --title="Decky Installer" --width=300 --height=100 --list --radiolist --text "Select branch to install:" --hide-header --column "Buttons" --column "Choice" --column "Info" \
     TRUE "release" "(Recommended option)" \
     FALSE "prerelease" "(May be unstable)")
 fi
