@@ -70,16 +70,23 @@ HOMEBREW_FOLDER="${USER_DIR}/homebrew"
 
 # if decky is already installed, then also add an 'uninstall' prompt
 if [[ -f "${USER_DIR}/homebrew/services/PluginLoader" ]] ; then
-    BRANCH=$(zen_nospam --title="Decky Installer" --width=360 --height=170 --list --radiolist --text "Select Option:" --hide-header --column "Buttons" --column "Choice" --column "Info" TRUE "release" "(Recommended option)" FALSE "prerelease" "(May be unstable)" FALSE "uninstall decky loader" "")
+    OPTION=$(zen_nospam --title="Decky Installer" --width=400 --height=200 --list --radiolist --text "Select Option:" --hide-header --column "Buttons" --column "Choice" --column "Info" \
+    TRUE "update to latest release" "Recommended option" \
+    FALSE "update to latest prerelease" "May be unstable" \
+    FALSE "uninstall decky loader" "Will keep config intact" \
+    FALSE "wipe decky loader" "Will NOT keep config intact")
 else
-    BRANCH=$(zen_nospam --title="Decky Installer" --width=300 --height=100 --list --radiolist --text "Select Branch:" --hide-header --column "Buttons" --column "Choice" --column "Info" TRUE "release" "(Recommended option)" FALSE "prerelease" "(May be unstable)" )
+    OPTION=$(zen_nospam --title="Decky Installer" --width=300 --height=100 --list --radiolist --text "Select Branch:" --hide-header --column "Buttons" --column "Choice" --column "Info" \
+    TRUE "release" "(Recommended option)" \
+    FALSE "prerelease" "(May be unstable)")
 fi
+
 if [[ $? -eq 1 ]] || [[ $? -eq 5 ]]; then
     exit 1
 fi
 
 # uninstall if uninstall option was selected
-if [ "$BRANCH" == "uninstall decky loader" ] ; then
+if [[ "$OPTION" == "uninstall decky loader" || "$OPTION" == "wipe decky loader" ]] ; then
     (
     echo "20" ; echo "# Disabling and removing services" ;
     sudo systemctl disable --now plugin_loader.service > /dev/null
@@ -90,8 +97,13 @@ if [ "$BRANCH" == "uninstall decky loader" ] ; then
     rm -rf "/tmp/plugin_loader"
     rm -rf "/tmp/user_install_script.sh"
 
-    echo "60" ; echo "# Cleaning services folder" ;
-    sudo rm "${HOMEBREW_FOLDER}/services/PluginLoader"
+    if [ "$OPTION" == "wipe decky loader" ]; then
+        echo "60" ; echo "# Deleting homebrew folder" ;
+        sudo rm "${HOMEBREW_FOLDER}"
+    else
+        echo "60" ; echo "# Cleaning services folder" ;
+        sudo rm "${HOMEBREW_FOLDER}/services/PluginLoader"
+    fi
 
     echo "80" ; echo "# Disabling CEF debugging" ;
     sudo rm "${USER_DIR}/.steam/steam/.cef-enable-remote-debugging"
@@ -108,6 +120,14 @@ if [ "$BRANCH" == "uninstall decky loader" ] ; then
 fi
 
 # otherwise install decky loader
+
+if [[ "$OPTION" == "release" || "$OPTION" == "update to release" ]]; then
+    BRANCH="release"
+fi
+if [[ "$OPTION" == "prerelease" || "$OPTION" == "update to prerelease" ]]; then
+    BRANCH="prerelease"
+fi
+
 (
 echo "15" ; echo "# Creating file structure" ;
 rm -rf "${HOMEBREW_FOLDER}/services"
@@ -116,7 +136,7 @@ sudo -u $SUDO_USER  mkdir -p "${HOMEBREW_FOLDER}/plugins"
 sudo -u $SUDO_USER  touch "${USER_DIR}/.steam/steam/.cef-enable-remote-debugging"
 
 echo "30" ; echo "# Finding latest $BRANCH";
-if [ $BRANCH = 'prerelease' ] ; then
+if [ "$BRANCH" = 'prerelease' ] ; then
     RELEASE=$(curl -s 'https://api.github.com/repos/SteamDeckHomebrew/decky-loader/releases' | jq -r "first(.[] | select(.prerelease == "true"))")
 else
     RELEASE=$(curl -s 'https://api.github.com/repos/SteamDeckHomebrew/decky-loader/releases' | jq -r "first(.[] | select(.prerelease == "false"))")
