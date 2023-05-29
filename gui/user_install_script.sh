@@ -70,7 +70,7 @@ HOMEBREW_FOLDER="${USER_DIR}/homebrew"
 
 # if decky is already installed, then also add an 'uninstall' prompt
 if [[ -f "${USER_DIR}/homebrew/services/PluginLoader" ]] ; then
-    OPTION=$(zen_nospam --title="Decky Installer" --width=400 --height=200 --list --radiolist --text "Select Option:" --hide-header --column "Buttons" --column "Choice" --column "Info" \
+    OPTION=$(zen_nospam --title="Decky Installer" --width=420 --height=200 --list --radiolist --text "Select Option:" --hide-header --column "Buttons" --column "Choice" --column "Info" \
     TRUE "update to latest release" "Recommended option" \
     FALSE "update to latest prerelease" "May be unstable" \
     FALSE "uninstall decky loader" "Will keep config intact" \
@@ -99,7 +99,7 @@ if [[ "$OPTION" == "uninstall decky loader" || "$OPTION" == "wipe decky loader" 
 
     if [ "$OPTION" == "wipe decky loader" ]; then
         echo "60" ; echo "# Deleting homebrew folder" ;
-        sudo rm "${HOMEBREW_FOLDER}"
+        sudo rm -r "${HOMEBREW_FOLDER}"
     else
         echo "60" ; echo "# Cleaning services folder" ;
         sudo rm "${HOMEBREW_FOLDER}/services/PluginLoader"
