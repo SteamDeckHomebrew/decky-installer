@@ -119,13 +119,10 @@ if [[ "$OPTION" == "uninstall decky loader" || "$OPTION" == "wipe decky loader" 
   exit 1
 fi
 
-# otherwise install decky loader
-
-if [[ "$OPTION" == "release" || "$OPTION" == "update to release" ]]; then
-    BRANCH="release"
-fi
-if [[ "$OPTION" == "prerelease" || "$OPTION" == "update to prerelease" ]]; then
+if [[ "$OPTION" =~ "pre" ]]; then
     BRANCH="prerelease"
+else
+    BRANCH="release"
 fi
 
 (
