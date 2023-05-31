@@ -121,10 +121,10 @@ fi
 
 # otherwise install decky loader
 
-if [[ "$OPTION" == "release" || "$OPTION" == "update to release" ]]; then
+if [[ "$OPTION" =~ "^release$" ]]; then
     BRANCH="release"
 fi
-if [[ "$OPTION" == "prerelease" || "$OPTION" == "update to prerelease" ]]; then
+if [[ "$OPTION" =~ "^prerelease$" ]]; then
     BRANCH="prerelease"
 fi
 
