@@ -34,8 +34,8 @@ if (( $EUID != 0 )); then
 
     if [ "${PASS_STATUS:5:2}" = "NP" ]; then # if no password is set
         if ( zen_nospam --title="Decky Installer" --width=300 --height=200 --question --text="You appear to have not set an admin password.\nDecky can still install by temporarily setting your password to 'Decky!' and continuing, then removing it when the installer finishes\nAre you okay with that?" ); then
-            yes "Decky!" | passwd deck
-            trap temp_pass_cleanup EXIT # make sure password is removed when application closes
+            yes "Decky!" | passwd deck # set password to Decky!
+            trap temp_pass_cleanup EXIT # make sure that password is removed when application closes
             PASS="Decky!"
         else exit 1; fi
     else
@@ -57,9 +57,7 @@ if (( $EUID != 0 )); then
     if ! [ $USER = "deck" ]; then
         zen_nospam --title="Decky Installer" --width=300 --height=100 --warning --text "You appear to not be on a deck.\nDecky should still mostly work, but you may not get full functionality."
     fi
-
-    # get user dir before rerunning as root, otherwise it'll just be 'home/root'
-
+    
     echo "$PASS" | sudo -S -k bash "$0" "$@" # rerun script as root
     exit 1
 fi
@@ -68,7 +66,7 @@ fi
 USER_DIR="$(getent passwd $SUDO_USER | cut -d: -f6)"
 HOMEBREW_FOLDER="${USER_DIR}/homebrew"
 
-# if decky is already installed, then also add an 'uninstall' prompt
+# if decky is already installed, then add 'uninstall' and 'wipe' option
 if [[ -f "${USER_DIR}/homebrew/services/PluginLoader" ]] ; then
     OPTION=$(zen_nospam --title="Decky Installer" --width=420 --height=200 --list --radiolist --text "Select Option:" --hide-header --column "Buttons" --column "Choice" --column "Info" \
     TRUE "update to latest release" "Recommended option" \
@@ -112,13 +110,14 @@ if [[ "$OPTION" == "uninstall decky loader" || "$OPTION" == "wipe decky loader" 
     ) |
     zen_nospam --progress \
   --title="Decky Installer" \
-   --width=300 --height=100 \
+  --width=300 --height=100 \
   --text="Uninstalling..." \
   --percentage=0 \
   --no-cancel
   exit 1
 fi
 
+# otherwise, install decky
 if [[ "$OPTION" =~ "pre" ]]; then
     BRANCH="prerelease"
 else
@@ -142,15 +141,16 @@ VERSION=$(jq -r '.tag_name' <<< ${RELEASE} )
 DOWNLOADURL=$(jq -r '.assets[].browser_download_url | select(endswith("PluginLoader"))' <<< ${RELEASE})
 
 echo "45" ; echo "# Installing version $VERSION" ;
+# make another zenity prompt while downloading the PluginLoader file, I do not know how this works
 curl -L $DOWNLOADURL -o ${HOMEBREW_FOLDER}/services/PluginLoader 2>&1 | stdbuf -oL tr '\r' '\n' | sed -u 's/^ *\([0-9][0-9]*\).*\( [0-9].*$\)/\1\n#Download Speed\:\2/' | zen_nospam --progress --title "Downloading Decky" --text="Download Speed: 0" --width=300 --height=100 --auto-close --no-cancel
 chmod +x ${HOMEBREW_FOLDER}/services/PluginLoader
 echo $VERSION > ${HOMEBREW_FOLDER}/services/.loader.version
 
 echo "70" ; echo "# Kiling plugin_loader if it exists" ;
-systemctl --user stop plugin_loader
-systemctl --user disable plugin_loader
-systemctl stop plugin_loader
-systemctl disable plugin_loader
+systemctl --user stop plugin_loader 2> /dev/null
+systemctl --user disable plugin_loader 2> /dev/null
+systemctl stop plugin_loader 2> /dev/null
+systemctl disable plugin_loader 2> /dev/null
 
 echo "85" ; echo "# Setting up systemd" ;
 curl -L https://raw.githubusercontent.com/SteamDeckHomebrew/decky-loader/main/dist/plugin_loader-${BRANCH}.service  --output ${HOMEBREW_FOLDER}/services/plugin_loader-${BRANCH}.service
