@@ -65,9 +65,16 @@ WantedBy=multi-user.target
 EOM
 
 if [[ -f "${HOMEBREW_FOLDER}/services/plugin_loader-release.service" ]]; then
-    printf "Grabbed latest release service.\n"
-    sed -i -e "s|\${HOMEBREW_FOLDER}|${HOMEBREW_FOLDER}|" "${HOMEBREW_FOLDER}/services/plugin_loader-release.service"
-    cp -f "${HOMEBREW_FOLDER}/services/plugin_loader-release.service" "/etc/systemd/system/plugin_loader.service"
+    firstline=$(head -n 1 ${HOMEBREW_FOLDER}/services/plugin_loader-release.service)
+    if [[ "$firstline" =~ "404" ]]; then
+        printf "Could not curl latest release systemd service, downloaded as 404. Using built-in service as a backup!\n"
+        rm -f "/etc/systemd/system/plugin_loader.service"
+        cp "${HOMEBREW_FOLDER}/services/plugin_loader-backup.service" "/etc/systemd/system/plugin_loader.service"
+    else
+        printf "Grabbed latest release service.\n"
+        sed -i -e "s|\${HOMEBREW_FOLDER}|${HOMEBREW_FOLDER}|" "${HOMEBREW_FOLDER}/services/plugin_loader-release.service"
+        cp -f "${HOMEBREW_FOLDER}/services/plugin_loader-release.service" "/etc/systemd/system/plugin_loader.service"
+    fi
 else
     printf "Could not curl latest release systemd service, using built-in service as a backup!\n"
     rm -f "/etc/systemd/system/plugin_loader.service"
