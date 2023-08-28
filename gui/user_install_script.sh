@@ -144,6 +144,10 @@ echo "45" ; echo "# Installing version $VERSION" ;
 # make another zenity prompt while downloading the PluginLoader file, I do not know how this works
 curl -L $DOWNLOADURL -o ${HOMEBREW_FOLDER}/services/PluginLoader 2>&1 | stdbuf -oL tr '\r' '\n' | sed -u 's/^ *\([0-9][0-9]*\).*\( [0-9].*$\)/\1\n#Download Speed\:\2/' | zen_nospam --progress --title "Downloading Decky" --text="Download Speed: 0" --width=300 --height=100 --auto-close --no-cancel
 chmod +x ${HOMEBREW_FOLDER}/services/PluginLoader
+
+echo "Check for SELinux presence and if it is present, set the correct permission on the binary file..."
+hash getenforce 2>/dev/null && getenforce | grep "Enforcing" >/dev/null && chcon -t bin_t ${HOMEBREW_FOLDER}/services/PluginLoader
+
 echo $VERSION > ${HOMEBREW_FOLDER}/services/.loader.version
 
 echo "70" ; echo "# Kiling plugin_loader if it exists" ;
