@@ -145,7 +145,7 @@ echo "45" ; echo "# Installing version $VERSION" ;
 curl -L $DOWNLOADURL -o ${HOMEBREW_FOLDER}/services/PluginLoader 2>&1 | stdbuf -oL tr '\r' '\n' | sed -u 's/^ *\([0-9][0-9]*\).*\( [0-9].*$\)/\1\n#Download Speed\:\2/' | zen_nospam --progress --title "Downloading Decky" --text="Download Speed: 0" --width=300 --height=100 --auto-close --no-cancel
 chmod +x ${HOMEBREW_FOLDER}/services/PluginLoader
 
-echo "Check for SELinux presence and if it is present, set the correct permission on the binary file..."
+echo "60"; echo "Running SELinux fix if it is enabled"
 hash getenforce 2>/dev/null && getenforce | grep "Enforcing" >/dev/null && chcon -t bin_t ${HOMEBREW_FOLDER}/services/PluginLoader
 
 echo $VERSION > ${HOMEBREW_FOLDER}/services/.loader.version
