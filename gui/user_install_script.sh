@@ -15,7 +15,7 @@ if ! command -v jq &> /dev/null
 then
     echo "JQ could not be found, please install it"
     echo "Info on how to install it can be found at https://stedolan.github.io/jq/download/"
-    exit
+    exit 1
 fi
 
 # check if github.com is reachable
@@ -115,7 +115,7 @@ if [[ "$OPTION" == "uninstall decky loader" || "$OPTION" == "wipe decky loader" 
   --text="Uninstalling..." \
   --percentage=0 \
   --no-cancel
-  exit 1
+  exit 0
 fi
 
 # otherwise, install decky
@@ -132,7 +132,7 @@ sudo -u $SUDO_USER  mkdir -p "${HOMEBREW_FOLDER}/services"
 sudo -u $SUDO_USER  mkdir -p "${HOMEBREW_FOLDER}/plugins"
 sudo -u $SUDO_USER  touch "${USER_DIR}/.steam/steam/.cef-enable-remote-debugging"
 # if installed as flatpak, put .cef-enable-remote-debugging there
-[ -d "${USER_DIR}/.var/app/com.valvesoftware.Steam/data/Steam/" ] && sudo -u $SUDO_USER touch ${USER_DIR}/.var/app/com.valvesoftware.Steam/data/Steam/.cef-enable-remote-debugging"
+[ -d "${USER_DIR}/.var/app/com.valvesoftware.Steam/data/Steam/" ] && sudo -u $SUDO_USER touch "${USER_DIR}/.var/app/com.valvesoftware.Steam/data/Steam/.cef-enable-remote-debugging"
 
 echo "30" ; echo "# Finding latest $BRANCH";
 if [ "$BRANCH" = 'prerelease' ] ; then

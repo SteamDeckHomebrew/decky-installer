@@ -7,7 +7,7 @@ if ! command -v jq &> /dev/null
 then
     echo "JQ could not be found, please install it"
     echo "Info on how to install it can be found at https://stedolan.github.io/jq/download/"
-    exit
+    exit 1
 fi
 
 # check if github.com is reachable
@@ -28,7 +28,7 @@ sudo -u $SUDO_USER mkdir -p "${HOMEBREW_FOLDER}/services"
 sudo -u $SUDO_USER mkdir -p "${HOMEBREW_FOLDER}/plugins"
 sudo -u $SUDO_USER touch "${USER_DIR}/.steam/steam/.cef-enable-remote-debugging"
 # if installed as flatpak, put .cef-enable-remote-debugging there
-[ -d "${USER_DIR}/.var/app/com.valvesoftware.Steam/data/Steam/" ] && sudo -u $SUDO_USER touch ${USER_DIR}/.var/app/com.valvesoftware.Steam/data/Steam/.cef-enable-remote-debugging"
+[ -d "${USER_DIR}/.var/app/com.valvesoftware.Steam/data/Steam/" ] && sudo -u $SUDO_USER touch "${USER_DIR}/.var/app/com.valvesoftware.Steam/data/Steam/.cef-enable-remote-debugging"
 
 # Download latest release and install it
 RELEASE=$(curl -s 'https://api.github.com/repos/SteamDeckHomebrew/decky-loader/releases' | jq -r "first(.[] | select(.prerelease == "true"))")
