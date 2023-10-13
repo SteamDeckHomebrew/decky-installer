@@ -20,3 +20,4 @@ sudo rm "${HOMEBREW_FOLDER}/services/PluginLoader"
 
 # disable CEF debugging
 sudo rm "${USER_DIR}/.steam/steam/.cef-enable-remote-debugging"
+sudo rm "${USER_DIR}/.var/app/com.valvesoftware.Steam/data/Steam/.cef-enable-remote-debugging" 2> /dev/null

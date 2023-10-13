@@ -27,6 +27,8 @@ rm -rf "${HOMEBREW_FOLDER}/services"
 sudo -u $SUDO_USER mkdir -p "${HOMEBREW_FOLDER}/services"
 sudo -u $SUDO_USER mkdir -p "${HOMEBREW_FOLDER}/plugins"
 sudo -u $SUDO_USER touch "${USER_DIR}/.steam/steam/.cef-enable-remote-debugging"
+# if installed as flatpak, put .cef-enable-remote-debugging there
+[ -d "${USER_DIR}/.var/app/com.valvesoftware.Steam/data/Steam/" ] && sudo -u $SUDO_USER touch ${USER_DIR}/.var/app/com.valvesoftware.Steam/data/Steam/.cef-enable-remote-debugging"
 
 # Download latest release and install it
 RELEASE=$(curl -s 'https://api.github.com/repos/SteamDeckHomebrew/decky-loader/releases' | jq -r "first(.[] | select(.prerelease == "true"))")

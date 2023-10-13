@@ -105,6 +105,7 @@ if [[ "$OPTION" == "uninstall decky loader" || "$OPTION" == "wipe decky loader" 
 
     echo "80" ; echo "# Disabling CEF debugging" ;
     sudo rm "${USER_DIR}/.steam/steam/.cef-enable-remote-debugging"
+    sudo rm "${USER_DIR}/.var/app/com.valvesoftware.Steam/data/Steam/.cef-enable-remote-debugging" 2> /dev/null
 
     echo "100" ; echo "# Uninstall finished, installer can now be closed";
     ) |
@@ -130,6 +131,8 @@ rm -rf "${HOMEBREW_FOLDER}/services"
 sudo -u $SUDO_USER  mkdir -p "${HOMEBREW_FOLDER}/services"
 sudo -u $SUDO_USER  mkdir -p "${HOMEBREW_FOLDER}/plugins"
 sudo -u $SUDO_USER  touch "${USER_DIR}/.steam/steam/.cef-enable-remote-debugging"
+# if installed as flatpak, put .cef-enable-remote-debugging there
+[ -d "${USER_DIR}/.var/app/com.valvesoftware.Steam/data/Steam/" ] && sudo -u $SUDO_USER touch ${USER_DIR}/.var/app/com.valvesoftware.Steam/data/Steam/.cef-enable-remote-debugging"
 
 echo "30" ; echo "# Finding latest $BRANCH";
 if [ "$BRANCH" = 'prerelease' ] ; then
