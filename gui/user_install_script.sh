@@ -68,15 +68,15 @@ HOMEBREW_FOLDER="${USER_DIR}/homebrew"
 
 # if decky is already installed, then add 'uninstall' and 'wipe' option
 if [[ -f "${USER_DIR}/homebrew/services/PluginLoader" ]] ; then
-    OPTION=$(zen_nospam --title="Decky Installer" --width=420 --height=200 --list --radiolist --text "Select Option:" --hide-header --column "Buttons" --column "Choice" --column "Info" \
-    TRUE "update to latest release" "Recommended option" \
-    FALSE "update to latest prerelease" "May be unstable" \
+    OPTION=$(zen_nospam --title="Decky Installer" --width=550 --height=200 --list --radiolist --text "Select Option:" --hide-header --column "Buttons" --column "Choice" --column "Info" \
+    TRUE "update to latest release" "Recommended for stable steamos" \
+    FALSE "update to latest prerelease" "Recommended for beta/preview steamos" \
     FALSE "uninstall decky loader" "Will keep config intact" \
     FALSE "wipe decky loader" "Will NOT keep config intact")
 else
-    OPTION=$(zen_nospam --title="Decky Installer" --width=300 --height=100 --list --radiolist --text "Select branch to install:" --hide-header --column "Buttons" --column "Choice" --column "Info" \
-    TRUE "release" "(Recommended option)" \
-    FALSE "prerelease" "(May be unstable)")
+    OPTION=$(zen_nospam --title="Decky Installer" --width=420 --height=100 --list --radiolist --text "Select branch to install:" --hide-header --column "Buttons" --column "Choice" --column "Info" \
+    TRUE "release" "Recommended for stable steamos" \
+    FALSE "prerelease" "Recommended for beta/preview steamos")
 fi
 
 if [[ $? -eq 1 ]] || [[ $? -eq 5 ]]; then
