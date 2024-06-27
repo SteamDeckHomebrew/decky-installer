@@ -153,7 +153,7 @@ hash getenforce 2>/dev/null && getenforce | grep "Enforcing" >/dev/null && chcon
 
 echo $VERSION > ${HOMEBREW_FOLDER}/services/.loader.version
 
-echo "70" ; echo "# Kiling plugin_loader if it exists" ;
+echo "70" ; echo "# Killing plugin_loader if it exists" ;
 systemctl --user stop plugin_loader 2> /dev/null
 systemctl --user disable plugin_loader 2> /dev/null
 systemctl stop plugin_loader 2> /dev/null
