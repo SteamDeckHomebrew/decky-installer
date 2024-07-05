@@ -7,7 +7,14 @@ temp_pass_cleanup() {
 
 # removes unhelpful GTK warnings
 zen_nospam() {
-  zenity 2> >(grep -v 'Gtk' >&2) "$@"
+# If we are on a wayland compositor the Wayland socket will be on /run/user/$UID(probaby 1000)/wayland-[socket-number].
+# When running Zenity under root(sudo) Zenity will assume /run/user/0/wayland-[socket-number].
+# That is not correct because the Wayland compositor is not running as root
+if [ $EUID = 0 ] && [ "$XDG_SESSION_TYPE" = "wayland" ]; then
+    WAYLAND_DISPLAY="$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY" XDG_RUNTIME_DIR="/run/user/0" zenity "$@" 2> >(grep -v 'Gtk' >&2)
+else
+    zenity 2> >(grep -v 'Gtk' >&2) "$@"
+fi
 }
 
 # check if JQ is installed
@@ -58,7 +65,7 @@ if (( $EUID != 0 )); then
         zen_nospam --title="Decky Installer" --width=300 --height=100 --warning --text "You appear to not be on a deck.\nDecky should still mostly work, but you may not get full functionality."
     fi
     
-    echo "$PASS" | sudo -S -k bash "$0" "$@" # rerun script as root
+    echo "$PASS" | sudo -E -S -k bash "$0" "$@" # rerun script as root
     exit 1
 fi
 
