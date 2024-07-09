@@ -7,14 +7,7 @@ temp_pass_cleanup() {
 
 # removes unhelpful GTK warnings
 zen_nospam() {
-# If we are on a wayland compositor the Wayland socket will be on /run/user/$UID(probaby 1000)/wayland-[socket-number].
-# When running Zenity under root(sudo) Zenity will assume /run/user/0/wayland-[socket-number].
-# That is not correct because the Wayland compositor is not running as root
-if [ $EUID = 0 ] && [ "$XDG_SESSION_TYPE" = "wayland" ]; then
-    WAYLAND_DISPLAY="$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY" XDG_RUNTIME_DIR="/run/user/0" zenity "$@" 2> >(grep -v 'Gtk' >&2)
-else
-    zenity 2> >(grep -v 'Gtk' >&2) "$@"
-fi
+  zenity 2> >(grep -v 'Gtk' >&2) "$@"
 }
 
 # check if JQ is installed
