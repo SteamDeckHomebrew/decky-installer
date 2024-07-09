@@ -58,7 +58,7 @@ if (( $EUID != 0 )); then
         zen_nospam --title="Decky Installer" --width=300 --height=100 --warning --text "You appear to not be on a deck.\nDecky should still mostly work, but you may not get full functionality."
     fi
     
-    echo "$PASS" | sudo -S -k bash "$0" "$@" # rerun script as root
+    echo "$PASS" | sudo -E -S -k bash "$0" "$@" # rerun script as root
     exit 1
 fi
 
