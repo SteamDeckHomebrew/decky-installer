@@ -31,7 +31,18 @@ sudo -u $SUDO_USER touch "${USER_DIR}/.steam/steam/.cef-enable-remote-debugging"
 [ -d "${USER_DIR}/.var/app/com.valvesoftware.Steam/data/Steam/" ] && sudo -u $SUDO_USER touch "${USER_DIR}/.var/app/com.valvesoftware.Steam/data/Steam/.cef-enable-remote-debugging"
 
 # Download latest release and install it
-RELEASE=$(curl -s 'https://api.github.com/repos/SteamDeckHomebrew/decky-loader/releases' | jq -r "first(.[] | select(.prerelease == "false"))")
+RELEASE_URL='https://api.github.com/repos/SteamDeckHomebrew/decky-loader/releases'
+RELEASE=$(curl -s $RELEASE_URL)
+RELEASE_TYPE=$(jq -r 'type' <<< ${RELEASE})
+if [ $RELEASE_TYPE != '"array"' ]; then
+    MESSAGE=$(jq -r '.message' <<< ${RELEASE})
+    echo "Error downloading decky-loader: $MESSAGE"
+    echo "Authorization URL: https://github.com/settings/tokens"
+    # Wait for the user to input the token
+    read -p "Enter token: " TOKEN
+fi
+RELEASE_DATA=$(jq -r "first(.[] | select(.prerelease == "false"))" <<< ${RELEASE} )
+RELEASE=$(curl -s -H "Authorization: token $TOKEN" $RELEASE_URL | jq -r "first(.[] | select(.prerelease == "false"))")
 VERSION=$(jq -r '.tag_name' <<< ${RELEASE} )
 DOWNLOADURL=$(jq -r '.assets[].browser_download_url | select(endswith("PluginLoader"))' <<< ${RELEASE})
 
