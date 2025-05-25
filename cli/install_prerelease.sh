@@ -17,6 +17,13 @@ then
     exit 1
 fi
 
+# check if api.github.com is working(not rate-limited)
+if ! curl -Is https://api.github.com/repos/SteamDeckHomebrew/decky-loader/releases | head -1 | grep 200 > /dev/null
+then
+    echo "Your network are being rate-limited from Github api, please wait for a while and try again."
+    exit 1
+fi
+
 echo "Installing Steam Deck Plugin Loader pre-release..."
 
 USER_DIR="$(getent passwd $SUDO_USER | cut -d: -f6)"
