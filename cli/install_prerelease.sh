@@ -20,7 +20,7 @@ fi
 # check if api.github.com is working(not rate-limited)
 if ! curl -Is https://api.github.com/repos/SteamDeckHomebrew/decky-loader/releases | head -1 | grep 200 > /dev/null
 then
-    echo "Your network are being rate-limited from Github api, please wait for a while and try again."
+    echo "Your network have problems accessing Github Api(probably rate-limited), please wait for a while and try again."
     exit 1
 fi
 
