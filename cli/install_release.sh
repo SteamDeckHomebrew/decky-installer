@@ -10,10 +10,10 @@ then
     exit 1
 fi
 
-# check if github.com is reachable
-if ! curl -Is https://github.com | head -1 | grep 200 > /dev/null
+# check if raw.githubusercontent.com is reachable
+if ! curl -Is https://raw.githubusercontent.com | head -1 | grep 301 > /dev/null
 then
-    echo "Github appears to be unreachable, you may not be connected to the internet"
+    echo "Your network has problems accessing raw.githubusercontent.com, please wait for a while and try again"
     exit 1
 fi
 
