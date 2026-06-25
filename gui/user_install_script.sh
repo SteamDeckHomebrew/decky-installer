@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # if a password was set by decky, this will run when the program closes
 temp_pass_cleanup() {
@@ -57,7 +57,7 @@ if (( $EUID != 0 )); then
     if ! [ $USER = "deck" ]; then
         zen_nospam --title="Decky Installer" --width=300 --height=100 --warning --text "You appear to not be on a deck.\nDecky should still mostly work, but you may not get full functionality."
     fi
-    
+
     echo "$PASS" | sudo -E -S -k bash "$0" "$@" # rerun script as root
     exit 1
 fi

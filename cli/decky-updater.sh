@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/usr/bin/env bash
 
 #If $1 is set, take that as input
 [ -n "$1" ] && release="$1"
