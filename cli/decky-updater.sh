@@ -1,5 +1,7 @@
 #!/bin/sh
 
+URL_BASE="https://github.com/SteamDeckHomebrew/decky-installer/releases/latest/download"
+
 #If $1 is set, take that as input
 [ -n "$1" ] && release="$1"
 
@@ -7,26 +9,29 @@
 while true
 do
     #If $release is set by $1, take that as input
-    [ -z "$release" ] && read -p "Install stable/pre-release or uninstall (s/p/u): " release
+    if [ -z "$release" ]; then
+        read -p "Install stable[S]/pre-release[P] or uninstall[U]: " release
+    fi
 
     #Only accept answers with S for stable or P for pre-release
-    case $(echo "${release}" | tr '[:lower:]' '[:upper:]') in
+    case "${release^^}" in
     S*)
         echo "Installing stable version"
-        curl -L https://github.com/SteamDeckHomebrew/decky-installer/releases/latest/download/install_release.sh | sh
+        curl -L "${URL_BASE}/install_release.sh" |bash
         exit 0
         ;;
     P*)
         echo "Installing pre-release"
-        curl -L https://github.com/SteamDeckHomebrew/decky-installer/releases/latest/download/install_prerelease.sh | sh
+        curl -L "${URL_BASE}/install_prerelease.sh" | bash
         exit 0
         ;;
     U*)
         echo "Uninstalling decky"
-        curl -L https://github.com/SteamDeckHomebrew/decky-installer/releases/latest/download/uninstall.sh | sh
+        curl -L "${URL_BASE}/uninstall.sh" | bash
         exit 0
         ;;
     *)
+        echo "Invalid option '$release'. Please use S (stable), P (pre-release), or U (uninstall)."
         unset release
         continue
         ;;
