@@ -73,6 +73,7 @@ _defaults(){
   IS_INTERACTIVE=true
   CHANGING_PASSWORD=false
   SUDO_PASS=""
+  _GUI_FD=""
   readonly DECKY_TEMP_PASS="Decky!"
   readonly PLUGIN_LOADER_SERVICE="/etc/systemd/system/plugin_loader.service"
   readonly DECKY_LOADER_BASE_URL="https://api.github.com/repos/SteamDeckHomebrew/decky-loader"
@@ -89,6 +90,8 @@ dispatch_action() {
   local ACTION="${1:-}"
   [[ $# -gt 0 ]] && shift
 
+  [[ "${ACTION}" == "help" || -z "${ACTION}" ]] || _gui_open
+
   case "$ACTION" in
     install) install "$@" ;;
     uninstall)
@@ -104,10 +107,31 @@ dispatch_action() {
   esac
 }
 
+_gui_open() {
+  [[ "${IS_GUI:-false}" == true ]] || return 0
+  _has_command zenity || return 0
+  # shellcheck disable=SC2094
+  exec {_GUI_FD}> >(zenity --progress --pulsate --no-cancel \
+    --title="Decky Installer" --text="Starting..." 2>/dev/null) || true
+}
+
+_gui_close() {
+  [[ -n "${_GUI_FD:-}" ]] || return 0
+  printf "100\n" 1>&"${_GUI_FD}" 2>/dev/null || true
+  exec {_GUI_FD}>&- 2>/dev/null || true
+  _GUI_FD=""
+}
+
+_gui_update() {
+  [[ -n "${_GUI_FD:-}" ]] || return 0
+  printf "#%s\n" "$(printf "%b" "$*")" 1>&"${_GUI_FD}" 2>/dev/null || true
+}
+
 _error() {
   while IFS= read -r line || [[ -n "${line}" ]]; do
     printf "█▓▒░ ERROR: %s\n" "${line}" >&2
   done < <(printf "%b" "$*")
+  _gui_close
   if [[ "${IS_GUI:-false}" == true ]] && _has_command zenity; then
     zenity --error --title="Decky Installer" --text="$(printf "%b" "$*")" --no-wrap 2>/dev/null || true
   fi
@@ -119,7 +143,7 @@ _msg() {
     printf "█▓▒░ %s\n" "${line}"
   done < <(printf "%b" "$*")
   if [[ "${IS_GUI:-false}" == true ]] && _has_command zenity; then
-    zenity --info --title="Decky Installer" --text="$(printf "%b" "$*")" --no-wrap 2>/dev/null || true
+    _gui_update "$*"
   fi
 }
 
@@ -184,6 +208,17 @@ _prompt_password() {
     printf "\n" >&2
   fi
   printf "%s" "${pass}"
+}
+
+_prompt_text() {
+  local prompt="${1:-Input: }" text
+  if [[ "${IS_GUI:-false}" == true ]] && _has_command zenity; then
+    text=$(zenity --entry --title="Decky Installer" --text="${prompt}" 2>/dev/null) || return 1
+  else
+    printf "%s" "${prompt}" >&2
+    read -r text </dev/tty || return 1
+  fi
+  printf "%s" "${text}"
 }
 
 preflight_check_sudo() {
@@ -298,8 +333,7 @@ interactive_menu() {
     branch=$(_select "Select release branch:" "release" "prerelease") \
       || _error "No branch selected."
     DECKY_LOADER_RELEASE_TYPE="${branch}"
-    printf "Enter specific version to install (leave blank for latest): " >&2
-    read -r version_input </dev/tty || true
+    version_input=$(_prompt_text "Enter specific version to install (leave blank for latest):") || true
     if [[ -n "${version_input}" ]]; then
       _validate_version "${version_input}"
       DECKY_LOADER_TARGET_VERSION="${version_input}"
@@ -314,6 +348,7 @@ cleanup_exit() {
     printf '%s\n' "${SUDO_PASS}" | sudo -S -k passwd -d "${CURRENT_USER}" 2>/dev/null || true
   fi
   test -d "${WORKDIR:-/dev/null}" && find "${WORKDIR}" -delete
+  _gui_close
   if [[ "${IS_INTERACTIVE:-false}" == true ]]; then
     printf "█▓▒░ Press (A)/[Enter] to close terminal\n"
     read -r _ </dev/tty 2>/dev/null || true
@@ -328,7 +363,7 @@ export_decky() {
 
   [[ -d "${downloads}" ]] || mkdir -p "${downloads}"
 
-  printf "Exporting Decky data to %s...\n" "${export_path}"
+  _msg "Exporting Decky data to ${export_path}..."
   tar -czf "${export_path}" \
     -C "${HOMEBREW_FOLDER}" \
     --exclude="./services" \
@@ -357,8 +392,8 @@ import_decky() {
 
     case "${source_choice}" in
       "Enter path manually")
-        printf "Enter absolute path to archive: " >&2
-        read -r archive_path </dev/tty || _error "Path entry cancelled."
+        archive_path=$(_prompt_text "Enter absolute path to archive:") \
+          || _error "Path entry cancelled."
         ;;
       "Find archive automatically")
         local -a found
@@ -377,20 +412,20 @@ import_decky() {
       if [[ -d "${HOMEBREW_FOLDER}" ]]; then
         _confirm "This will wipe user-facing content in ${HOMEBREW_FOLDER} before import. Continue?" \
           || { _msg "Import cancelled."; return 0; }
-        printf "Backing up existing data before wipe...\n"
+        _msg "Backing up existing data before wipe..."
         export_decky
-        printf "Wiping user-facing content in %s...\n" "${HOMEBREW_FOLDER}"
+        _msg "Wiping user-facing content in ${HOMEBREW_FOLDER}..."
         find "${HOMEBREW_FOLDER}" -mindepth 1 -maxdepth 1 \
           ! -name "services" ! -name "archive" \
           -exec find {} -delete \;
       fi
-      printf "Extracting %s into %s...\n" "${archive_path}" "${HOMEBREW_FOLDER}"
+      _msg "Extracting ${archive_path} into ${HOMEBREW_FOLDER}..."
       mkdir -p "${HOMEBREW_FOLDER}"
       tar -xzf -- "${archive_path}" -C "${HOMEBREW_FOLDER}" \
         || _error "Failed to extract archive."
       ;;
     merge-overwrite)
-      printf "Merging %s into %s...\n" "${archive_path}" "${HOMEBREW_FOLDER}"
+      _msg "Merging ${archive_path} into ${HOMEBREW_FOLDER}..."
       mkdir -p "${HOMEBREW_FOLDER}"
       tar -xzf -- "${archive_path}" -C "${HOMEBREW_FOLDER}" \
         || _error "Failed to extract archive."
@@ -406,17 +441,17 @@ import_decky() {
 uninstall() {
   _confirm "This will permanently remove Decky Loader and all data in ${HOMEBREW_FOLDER}. Continue?" \
     || { _msg "Uninstall cancelled."; return 0; }
-  printf "Uninstalling Decky Loader...\n"
+  _msg "Uninstalling Decky Loader..."
 
   if systemctl is-active --quiet plugin_loader 2>/dev/null || \
      systemctl is-enabled --quiet plugin_loader 2>/dev/null; then
-    printf "Stopping and disabling plugin_loader service...\n"
+    _msg "Stopping and disabling plugin_loader service..."
     _sudo systemctl stop plugin_loader 2>/dev/null || true
     _sudo systemctl disable plugin_loader 2>/dev/null || true
   fi
 
   if [[ -f "${PLUGIN_LOADER_SERVICE}" ]]; then
-    printf "Removing systemd unit file...\n"
+    _msg "Removing systemd unit file..."
     _sudo rm -f -- "${PLUGIN_LOADER_SERVICE}"
     _sudo systemctl daemon-reload
   fi
@@ -427,18 +462,18 @@ uninstall() {
   )
   for cef in "${cef_paths[@]}"; do
     if [[ -f "${cef}" ]]; then
-      printf "Removing %s...\n" "${cef}"
+      _msg "Removing ${cef}..."
       rm -f "${cef}"
     fi
   done
 
   if [[ -d /tmp/plugin_loader ]]; then
-    printf "Removing /tmp/plugin_loader...\n"
+    _msg "Removing /tmp/plugin_loader..."
     _sudo find /tmp/plugin_loader -delete
   fi
 
   if [[ -d "${HOMEBREW_FOLDER}" ]]; then
-    printf "Purging %s...\n" "${HOMEBREW_FOLDER}"
+    _msg "Purging ${HOMEBREW_FOLDER}..."
     _sudo find "${HOMEBREW_FOLDER}" -delete
   fi
 
@@ -469,7 +504,7 @@ rollback() {
     | cut -d= -f2- || true)
   [[ -n "${DECKY_LOADER_RELEASE_TYPE}" ]] || DECKY_LOADER_RELEASE_TYPE="release"
 
-  printf "Rolling back to %s (%s)...\n" "${version}" "${DECKY_LOADER_RELEASE_TYPE}"
+  _msg "Rolling back to ${version} (${DECKY_LOADER_RELEASE_TYPE})..."
   install_install_service
   _msg "Rollback to ${version} complete."
 }
@@ -496,7 +531,7 @@ cleanup() {
 
   _msg "Removing ${#to_delete[@]} old archive(s), keeping ${keep} newest (freeing ~${freed})..."
   for version in "${to_delete[@]}"; do
-    printf "  Removing %s\n" "${version}"
+    _msg "  Removing ${version}"
     _sudo find "${archive_dir:?}/${version}" -delete
   done
 }
@@ -510,7 +545,7 @@ _validate_version() {
 install() {
   [[ -n "${1:-}" ]] && DECKY_LOADER_TARGET_VERSION="$1"
   [[ -n "${DECKY_LOADER_TARGET_VERSION}" ]] && _validate_version "${DECKY_LOADER_TARGET_VERSION}"
-  printf "Installing Decky Loader (%s)...\n" "${DECKY_LOADER_TARGET_VERSION:-${DECKY_LOADER_RELEASE_TYPE}}"
+  _msg "Installing Decky Loader (${DECKY_LOADER_TARGET_VERSION:-${DECKY_LOADER_RELEASE_TYPE}})..."
   install_setup_dirs
   install_prepare_steam
   install_download_components
@@ -521,13 +556,13 @@ install() {
 }
 
 install_setup_dirs(){
-  printf "Setting up directories in %s...\n" "${HOMEBREW_FOLDER}"
+  _msg "Setting up directories in ${HOMEBREW_FOLDER}..."
   _sudo mkdir -p "${HOMEBREW_FOLDER}/services" "${HOMEBREW_FOLDER}/plugins"
   _sudo chown -R "${CURRENT_USER}":"${CURRENT_USER}" "${HOMEBREW_FOLDER}"
   _sudo chown -R 0:0 "${HOMEBREW_FOLDER}/services"
 }
 install_prepare_steam(){
-  printf "Configuring Steam for remote debugging...\n"
+  _msg "Configuring Steam for remote debugging..."
   if [[ -d "${USER_HOME}/.steam/steam/" ]]; then
     touch "${USER_HOME}/.steam/steam/.cef-enable-remote-debugging"
   fi
@@ -540,7 +575,7 @@ install_download_components(){
   local release download_url raw
 
   if [[ -n "${DECKY_LOADER_TARGET_VERSION}" ]]; then
-    printf "Fetching release info for %s...\n" "${DECKY_LOADER_TARGET_VERSION}"
+    _msg "Fetching release info for ${DECKY_LOADER_TARGET_VERSION}..."
     raw=$(curl -sSf "${DECKY_LOADER_BASE_URL}/releases/tags/${DECKY_LOADER_TARGET_VERSION}") \
       || _error "Failed to fetch release ${DECKY_LOADER_TARGET_VERSION} from GitHub."
     if jq -e '.message' <<< "${raw}" >/dev/null 2>&1; then
@@ -552,7 +587,7 @@ install_download_components(){
     local is_prerelease=false
     [[ "${DECKY_LOADER_RELEASE_TYPE}" == prerelease ]] && is_prerelease=true
 
-    printf "Fetching %s release info...\n" "${DECKY_LOADER_RELEASE_TYPE}"
+    _msg "Fetching ${DECKY_LOADER_RELEASE_TYPE} release info..."
     raw=$(curl -sSf "${DECKY_LOADER_BASE_URL}/releases") \
       || _error "Failed to fetch release list from GitHub."
     if jq -e '.message' <<< "${raw}" >/dev/null 2>&1; then
@@ -566,10 +601,10 @@ install_download_components(){
   DECKY_LOADER_VERSION=$(jq -r '.tag_name' <<< "${release}")
   [[ -z "${DECKY_LOADER_VERSION}" || "${DECKY_LOADER_VERSION}" == null ]] && \
     _error "Could not parse version from ${DECKY_LOADER_RELEASE_TYPE} release metadata."
-  printf "Found version: %s\n" "${DECKY_LOADER_VERSION}"
+  _msg "Found version: ${DECKY_LOADER_VERSION}"
 
   if [[ -f "${HOMEBREW_FOLDER}/archive/${DECKY_LOADER_VERSION}/PluginLoader" ]]; then
-    printf "Version %s already in archive, skipping download.\n" "${DECKY_LOADER_VERSION}"
+    _msg "Version ${DECKY_LOADER_VERSION} already in archive, skipping download."
     return 0
   fi
 
@@ -577,11 +612,11 @@ install_download_components(){
   [[ -z "${download_url}" ]] && \
     _error "No PluginLoader asset found in ${DECKY_LOADER_RELEASE_TYPE} release ${DECKY_LOADER_VERSION}."
 
-  printf "Downloading PluginLoader %s...\n" "${DECKY_LOADER_VERSION}"
+  _msg "Downloading PluginLoader ${DECKY_LOADER_VERSION}..."
   curl -Lf "${download_url}" -o "${WORKDIR}/PluginLoader" \
     || _error "Failed to download PluginLoader ${DECKY_LOADER_VERSION}."
 
-  printf "Downloading plugin_loader service file...\n"
+  _msg "Downloading plugin_loader service file..."
   curl -Lf "https://raw.githubusercontent.com/SteamDeckHomebrew/decky-loader/main/dist/plugin_loader-${DECKY_LOADER_RELEASE_TYPE}.service" \
     -o "${WORKDIR}/plugin_loader-${DECKY_LOADER_RELEASE_TYPE}.service" \
     || _error "Failed to download plugin_loader-${DECKY_LOADER_RELEASE_TYPE}.service."
@@ -592,7 +627,7 @@ install_download_components(){
 install_archive_components(){
   local archive_dir="${HOMEBREW_FOLDER}/archive/${DECKY_LOADER_VERSION}"
   [[ -f "${archive_dir}/PluginLoader" ]] && return 0
-  printf "Archiving artifacts to %s...\n" "${archive_dir}"
+  _msg "Archiving artifacts to ${archive_dir}..."
   mkdir -p "${archive_dir}"
   cp "${WORKDIR}/PluginLoader" "${archive_dir}/PluginLoader"
   cp "${WORKDIR}/.loader.version" "${archive_dir}/.loader.version"
@@ -606,18 +641,18 @@ install_install_service(){
   local archive_dir="${HOMEBREW_FOLDER}/archive/${DECKY_LOADER_VERSION}"
 
   if [[ -f "${PLUGIN_LOADER_SERVICE}" ]]; then
-    printf "Stopping existing service...\n"
+    _msg "Stopping existing service..."
     _sudo systemctl stop plugin_loader 2>/dev/null || true
   fi
 
-  printf "Installing PluginLoader to services...\n"
+  _msg "Installing PluginLoader to services..."
   _sudo cp "${archive_dir}/PluginLoader" "${HOMEBREW_FOLDER}/services/PluginLoader"
   _sudo cp "${archive_dir}/.loader.version" "${HOMEBREW_FOLDER}/services/.loader.version"
 
-  printf "Installing systemd unit...\n"
+  _msg "Installing systemd unit..."
   _sudo cp "${archive_dir}/plugin_loader.service" "${PLUGIN_LOADER_SERVICE}"
   _sudo systemctl daemon-reload
-  printf "Enabling and starting plugin_loader...\n"
+  _msg "Enabling and starting plugin_loader..."
   _sudo systemctl enable --now plugin_loader
   _msg "Service plugin_loader enabled and started."
 }
