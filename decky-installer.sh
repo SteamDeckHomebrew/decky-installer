@@ -3,10 +3,10 @@
 # Use _msg or _error for important messages
 # They show in both terminal and hui
 # printf for debug messages
-DECKY_LOADER_VERSION=2.0.0
+readonly SCRIPT_VERSION=2.0.0
 
 set -euo pipefail
-trap 'handle_err "${LINENO:-?}"' ERR
+trap 'handle_err "${LINENO:-?}" "$?" "${BASH_COMMAND}"' ERR
 trap cleanup_exit EXIT INT TERM
 
 main() {
@@ -26,6 +26,7 @@ help(){
 }
 
 preflight_checks(){
+  # shellcheck source=/dev/null
   . /etc/os-release
   OS_NAME="${NAME:-unknown}"
   CURRENT_USER=$(id -un)
@@ -76,6 +77,7 @@ _defaults(){
   readonly PLUGIN_LOADER_SERVICE="/etc/systemd/system/plugin_loader.service"
   readonly DECKY_LOADER_BASE_URL="https://api.github.com/repos/SteamDeckHomebrew/decky-loader"
   DECKY_LOADER_INSTALLED_RELEASE_TYPE=""
+  DECKY_LOADER_VERSION=""
   DECKY_LOADER_RELEASE_TYPE="release"
   DECKY_LOADER_TARGET_VERSION=""
   USER_HOME=""
@@ -89,11 +91,14 @@ dispatch_action() {
 
   case "$ACTION" in
     install) install "$@" ;;
-    uninstall) [[ -d "${HOMEBREW_FOLDER}" ]] && export_decky; uninstall ;;
+    uninstall)
+      if [[ -d "${HOMEBREW_FOLDER}" ]]; then export_decky; fi
+      uninstall ;;
     rollback) rollback "$@" ;;
     cleanup) cleanup "$@" ;;
     export) export_decky ;;
     import) import_decky "$@" ;;
+    doctor) doctor ;;
     help|"") help ;;
     *) _error "Unknown action: $ACTION" ;;
   esac
@@ -119,41 +124,28 @@ _msg() {
 }
 
 greeting() {
-  _msg "Decky Installer Suite ░▒▓█\nVersion ${DECKY_LOADER_VERSION}\nScript is downloaded from https://github.com/SteamDeckHomebrew/decky-installer\n\nIt is a script for installing Decky Loader"
+  _msg "Decky Installer Suite ░▒▓█\nVersion ${SCRIPT_VERSION}\nScript is downloaded from https://github.com/SteamDeckHomebrew/decky-installer\n\nIt is a script for installing Decky Loader"
 }
 
 _is_gui() {
-    if [[ -n "${DISPLAY:-}" || -n "${WAYLAND_DISPLAY:-}" ]]; then
-        return 0
-    else
-        return 1
-    fi
+  [[ -n "${DISPLAY:-}" || -n "${WAYLAND_DISPLAY:-}" ]]
 }
 
 _is_interactive() {
-    if [[ -t 0 ]]; then
-        return 0
-    else
-        return 1
-    fi
+  [[ -t 0 ]]
 }
 
 _is_ssh() {
-    [[ -n "${SSH_CONNECTION:-}" || -n "${SSH_CLIENT:-}" || -n "${SSH_TTY:-}" ]]
+  [[ -n "${SSH_CONNECTION:-}" || -n "${SSH_CLIENT:-}" || -n "${SSH_TTY:-}" ]]
 }
 
 _has_command() {
-    if command -v "$1" >/dev/null 2>&1; then
-        return 0
-    else
-        return 1
-    fi
+  command -v "$1" >/dev/null 2>&1
 }
 
 handle_err() {
-  local line="$1"
-  echo "Unexpected error on line $line" >&2
-  exit 1
+  local line="$1" rc="$2" cmd="$3"
+  _error "Unexpected error on line ${line} (exit ${rc}): ${cmd}"
 }
 
 _require_command() {
@@ -167,10 +159,11 @@ _sudo() {
   fi
 
   if [[ -n "${SUDO_PASS:-}" ]]; then
-    echo "${SUDO_PASS}" | sudo -S "$@" 2>/dev/null
+    printf '%s\n' "${SUDO_PASS}" | sudo -S "$@"
     return
   fi
 
+  # Quiet probe — only checking capability, not running the real command
   if sudo -n "$@" 2>/dev/null; then
     return
   fi
@@ -179,7 +172,7 @@ _sudo() {
   pass=$(_prompt_password "Enter sudo password for ${CURRENT_USER}: ") \
     || _error "Password entry cancelled."
   SUDO_PASS="${pass}"
-  echo "${SUDO_PASS}" | sudo -S "$@" 2>/dev/null
+  printf '%s\n' "${SUDO_PASS}" | sudo -S "$@"
 }
 
 _prompt_password() {
@@ -213,12 +206,12 @@ preflight_check_sudo() {
   fi
 
   # 3.1 Check if user is not in sudoers at all
-  if echo "${sudo_output}" | grep -qE "not allowed|not in the sudoers"; then
+  if grep -qE "not allowed|not in the sudoers" <<<"${sudo_output}"; then
     _error "User ${CURRENT_USER} is not in the sudoers list."
   fi
 
   # 3.2 User is in sudoers but a password is required — check they actually have one
-  if echo "${sudo_output}" | grep -q "a password is required"; then
+  if grep -q "a password is required" <<<"${sudo_output}"; then
     local passwd_status
     passwd_status=$(passwd -S "${CURRENT_USER}" 2>/dev/null | awk '{print $2}' || true)
     case "${passwd_status}" in
@@ -238,7 +231,7 @@ preflight_check_sudo() {
         while true; do
           pass=$(_prompt_password "Enter sudo password for ${CURRENT_USER}: ") \
             || _error "Password entry cancelled."
-          if echo "${pass}" | sudo -S -k true 2>/dev/null; then
+          if sudo -S -k true <<<"${pass}" 2>/dev/null; then
             SUDO_PASS="${pass}"
             return 0
           fi
@@ -262,8 +255,21 @@ preflight_check_systemd() {
 
 preflight_check_existing_install() {
   [[ -f "${PLUGIN_LOADER_SERVICE}" ]] || return 0
-  DECKY_LOADER_INSTALLED_RELEASE_TYPE=$(grep '^# DECKY_LOADER_RELEASE_TYPE=' "${PLUGIN_LOADER_SERVICE}" | cut -d= -f2 || true)
-  DECKY_LOADER_VERSION=$(grep '^# DECKY_LOADER_VERSION=' "${PLUGIN_LOADER_SERVICE}" | cut -d= -f2 || true)
+  DECKY_LOADER_INSTALLED_RELEASE_TYPE=$(grep '^# DECKY_LOADER_RELEASE_TYPE=' "${PLUGIN_LOADER_SERVICE}" | cut -d= -f2- || true)
+  DECKY_LOADER_VERSION=$(grep '^# DECKY_LOADER_VERSION=' "${PLUGIN_LOADER_SERVICE}" | cut -d= -f2- || true)
+}
+
+_confirm() {
+  local prompt="${1:-Are you sure?}"
+  [[ "${IS_INTERACTIVE}" != true ]] && return 0
+  if [[ "${IS_GUI:-false}" == true ]] && _has_command zenity; then
+    zenity --question --title="Decky Installer" --text="${prompt}" 2>/dev/null
+  else
+    local answer
+    printf "%s [y/N] " "${prompt}" >&2
+    read -r answer </dev/tty || return 1
+    [[ "${answer}" =~ ^[Yy]$ ]]
+  fi
 }
 
 _select() {
@@ -277,6 +283,7 @@ _select() {
     select opt in "${options[@]}"; do
       [[ -n "${opt}" ]] && printf "%s" "${opt}" && return 0
     done
+    return 1  # EOF / Ctrl-D without a valid selection
   fi
 }
 
@@ -293,7 +300,10 @@ interactive_menu() {
     DECKY_LOADER_RELEASE_TYPE="${branch}"
     printf "Enter specific version to install (leave blank for latest): " >&2
     read -r version_input </dev/tty || true
-    [[ -n "${version_input}" ]] && DECKY_LOADER_TARGET_VERSION="${version_input}"
+    if [[ -n "${version_input}" ]]; then
+      _validate_version "${version_input}"
+      DECKY_LOADER_TARGET_VERSION="${version_input}"
+    fi
   fi
 
   dispatch_action "${choice}"
@@ -301,7 +311,7 @@ interactive_menu() {
 
 cleanup_exit() {
   if [[ "${CHANGING_PASSWORD:-false}" == true && -n "${SUDO_PASS:-}" ]]; then
-    echo "${SUDO_PASS}" | sudo -S -k passwd -d "${CURRENT_USER}" 2>/dev/null || true
+    printf '%s\n' "${SUDO_PASS}" | sudo -S -k passwd -d "${CURRENT_USER}" 2>/dev/null || true
   fi
   test -d "${WORKDIR:-/dev/null}" && find "${WORKDIR}" -delete
   if [[ "${IS_INTERACTIVE:-false}" == true ]]; then
@@ -365,22 +375,24 @@ import_decky() {
   case "${strategy}" in
     backup-wipe-import)
       if [[ -d "${HOMEBREW_FOLDER}" ]]; then
+        _confirm "This will wipe user-facing content in ${HOMEBREW_FOLDER} before import. Continue?" \
+          || { _msg "Import cancelled."; return 0; }
         printf "Backing up existing data before wipe...\n"
         export_decky
         printf "Wiping user-facing content in %s...\n" "${HOMEBREW_FOLDER}"
         find "${HOMEBREW_FOLDER}" -mindepth 1 -maxdepth 1 \
           ! -name "services" ! -name "archive" \
-          -exec rm -rf {} +
+          -exec find {} -delete \;
       fi
       printf "Extracting %s into %s...\n" "${archive_path}" "${HOMEBREW_FOLDER}"
       mkdir -p "${HOMEBREW_FOLDER}"
-      tar -xzf "${archive_path}" -C "${HOMEBREW_FOLDER}" \
+      tar -xzf -- "${archive_path}" -C "${HOMEBREW_FOLDER}" \
         || _error "Failed to extract archive."
       ;;
     merge-overwrite)
       printf "Merging %s into %s...\n" "${archive_path}" "${HOMEBREW_FOLDER}"
       mkdir -p "${HOMEBREW_FOLDER}"
-      tar -xzf "${archive_path}" -C "${HOMEBREW_FOLDER}" \
+      tar -xzf -- "${archive_path}" -C "${HOMEBREW_FOLDER}" \
         || _error "Failed to extract archive."
       ;;
     *)
@@ -392,6 +404,8 @@ import_decky() {
 }
 
 uninstall() {
+  _confirm "This will permanently remove Decky Loader and all data in ${HOMEBREW_FOLDER}. Continue?" \
+    || { _msg "Uninstall cancelled."; return 0; }
   printf "Uninstalling Decky Loader...\n"
 
   if systemctl is-active --quiet plugin_loader 2>/dev/null || \
@@ -403,7 +417,7 @@ uninstall() {
 
   if [[ -f "${PLUGIN_LOADER_SERVICE}" ]]; then
     printf "Removing systemd unit file...\n"
-    _sudo rm -f "${PLUGIN_LOADER_SERVICE}"
+    _sudo rm -f -- "${PLUGIN_LOADER_SERVICE}"
     _sudo systemctl daemon-reload
   fi
 
@@ -452,7 +466,7 @@ rollback() {
 
   DECKY_LOADER_VERSION="${version}"
   DECKY_LOADER_RELEASE_TYPE=$(grep '^# DECKY_LOADER_RELEASE_TYPE=' "${target_dir}/plugin_loader.service" \
-    | cut -d= -f2 || true)
+    | cut -d= -f2- || true)
   [[ -n "${DECKY_LOADER_RELEASE_TYPE}" ]] || DECKY_LOADER_RELEASE_TYPE="release"
 
   printf "Rolling back to %s (%s)...\n" "${version}" "${DECKY_LOADER_RELEASE_TYPE}"
@@ -483,12 +497,19 @@ cleanup() {
   _msg "Removing ${#to_delete[@]} old archive(s), keeping ${keep} newest (freeing ~${freed})..."
   for version in "${to_delete[@]}"; do
     printf "  Removing %s\n" "${version}"
-    _sudo rm -rf "${archive_dir:?}/${version}"
+    _sudo find "${archive_dir:?}/${version}" -delete
   done
+}
+
+_validate_version() {
+  local version="$1"
+  [[ "${version}" =~ ^v?[0-9][0-9A-Za-z.+-]*$ ]] \
+    || _error "Invalid version format: '${version}'. Expected e.g. v2.14.1"
 }
 
 install() {
   [[ -n "${1:-}" ]] && DECKY_LOADER_TARGET_VERSION="$1"
+  [[ -n "${DECKY_LOADER_TARGET_VERSION}" ]] && _validate_version "${DECKY_LOADER_TARGET_VERSION}"
   printf "Installing Decky Loader (%s)...\n" "${DECKY_LOADER_TARGET_VERSION:-${DECKY_LOADER_RELEASE_TYPE}}"
   install_setup_dirs
   install_prepare_steam
@@ -604,10 +625,3 @@ doctor(){
   :
 }
 main "$@"
-
-# Do not forget:
-# - Flags management
-# - Trap error
-# - Revert changes
-# - get back sudo password
-# - cleanup WORKDIR
