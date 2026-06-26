@@ -77,6 +77,7 @@ _defaults(){
   readonly DECKY_LOADER_BASE_URL="https://api.github.com/repos/SteamDeckHomebrew/decky-loader"
   DECKY_LOADER_INSTALLED_RELEASE_TYPE=""
   DECKY_LOADER_RELEASE_TYPE="release"
+  DECKY_LOADER_TARGET_VERSION=""
   USER_HOME=""
   HOMEBREW_FOLDER=""
   WORKDIR=""
@@ -286,10 +287,13 @@ interactive_menu() {
     || _error "No action selected."
 
   if [[ "${choice}" == "install" ]]; then
-    local branch
+    local branch version_input
     branch=$(_select "Select release branch:" "release" "prerelease") \
       || _error "No branch selected."
     DECKY_LOADER_RELEASE_TYPE="${branch}"
+    printf "Enter specific version to install (leave blank for latest): " >&2
+    read -r version_input </dev/tty || true
+    [[ -n "${version_input}" ]] && DECKY_LOADER_TARGET_VERSION="${version_input}"
   fi
 
   dispatch_action "${choice}"
@@ -484,7 +488,8 @@ cleanup() {
 }
 
 install() {
-  printf "Installing Decky Loader (%s)...\n" "${DECKY_LOADER_RELEASE_TYPE}"
+  [[ -n "${1:-}" ]] && DECKY_LOADER_TARGET_VERSION="$1"
+  printf "Installing Decky Loader (%s)...\n" "${DECKY_LOADER_TARGET_VERSION:-${DECKY_LOADER_RELEASE_TYPE}}"
   install_setup_dirs
   install_prepare_steam
   install_download_components
@@ -511,21 +516,31 @@ install_prepare_steam(){
   _msg "Steam remote debugging is enabled"
 }
 install_download_components(){
-  local release download_url
+  local release download_url raw
 
-  local is_prerelease=false
-  [[ "${DECKY_LOADER_RELEASE_TYPE}" == prerelease ]] && is_prerelease=true
+  if [[ -n "${DECKY_LOADER_TARGET_VERSION}" ]]; then
+    printf "Fetching release info for %s...\n" "${DECKY_LOADER_TARGET_VERSION}"
+    raw=$(curl -sSf "${DECKY_LOADER_BASE_URL}/releases/tags/${DECKY_LOADER_TARGET_VERSION}") \
+      || _error "Failed to fetch release ${DECKY_LOADER_TARGET_VERSION} from GitHub."
+    if jq -e '.message' <<< "${raw}" >/dev/null 2>&1; then
+      _error "GitHub API error: $(jq -r '.message' <<< "${raw}")"
+    fi
+    release="${raw}"
+    DECKY_LOADER_RELEASE_TYPE=$(jq -r 'if .prerelease then "prerelease" else "release" end' <<< "${release}")
+  else
+    local is_prerelease=false
+    [[ "${DECKY_LOADER_RELEASE_TYPE}" == prerelease ]] && is_prerelease=true
 
-  printf "Fetching %s release info...\n" "${DECKY_LOADER_RELEASE_TYPE}"
-  local raw
-  raw=$(curl -sSf "${DECKY_LOADER_BASE_URL}/releases") \
-    || _error "Failed to fetch release list from GitHub."
-  if jq -e '.message' <<< "${raw}" >/dev/null 2>&1; then
-    _error "GitHub API error: $(jq -r '.message' <<< "${raw}")"
+    printf "Fetching %s release info...\n" "${DECKY_LOADER_RELEASE_TYPE}"
+    raw=$(curl -sSf "${DECKY_LOADER_BASE_URL}/releases") \
+      || _error "Failed to fetch release list from GitHub."
+    if jq -e '.message' <<< "${raw}" >/dev/null 2>&1; then
+      _error "GitHub API error: $(jq -r '.message' <<< "${raw}")"
+    fi
+    release=$(jq -r --argjson pre "${is_prerelease}" 'first(.[] | select(.prerelease == $pre))' <<< "${raw}")
+    [[ -z "${release}" || "${release}" == null ]] && \
+      _error "No ${DECKY_LOADER_RELEASE_TYPE} release found."
   fi
-  release=$(jq -r --argjson pre "${is_prerelease}" 'first(.[] | select(.prerelease == $pre))' <<< "${raw}")
-  [[ -z "${release}" || "${release}" == null ]] && \
-    _error "No ${DECKY_LOADER_RELEASE_TYPE} release found."
 
   DECKY_LOADER_VERSION=$(jq -r '.tag_name' <<< "${release}")
   [[ -z "${DECKY_LOADER_VERSION}" || "${DECKY_LOADER_VERSION}" == null ]] && \
