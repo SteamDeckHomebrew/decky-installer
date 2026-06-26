@@ -31,19 +31,32 @@ preflight_checks(){
   . /etc/os-release
   OS_NAME="${NAME:-unknown}"
   CURRENT_USER=$(id -un)
+  _require_command sudo
+  _require_command curl
   _require_command jq
   if _is_gui && _has_command zenity; then
     IS_GUI=true
   fi
   _is_interactive || { IS_INTERACTIVE=false; IS_GUI=false; }
   preflight_check_sudo
+  preflight_check_systemd
+  preflight_check_existing_install
   # github is available
-  # mktemp
-  # check if systemd is active
-  # check if deckyloader is already installed and it's version
   WORKDIR="$(mktemp -d)"
-  printf "User %s on %s started decky installer script\n" "${CURRENT_USER}" "${OS_NAME}"
-  printf "Interactive: %s\nGUI Installer: %s\n" "${IS_INTERACTIVE}" "${IS_GUI}"
+  local elevated=false
+  [[ "${EUID}" -eq 0 ]] && elevated=true
+  printf "User       : %s\n" "${CURRENT_USER}"
+  printf "OS         : %s\n" "${OS_NAME}"
+  printf "Interactive: %s\n" "${IS_INTERACTIVE}"
+  printf "GUI        : %s\n" "${IS_GUI}"
+  printf "Elevated   : %s\n" "${elevated}"
+  printf "Temp pass  : %s\n" "${CHANGING_PASSWORD}"
+  if [[ -f "${PLUGIN_LOADER_SERVICE}" ]]; then
+    printf "Existing   : branch=%s version=%s\n" \
+      "${DECKY_LOADER_BRANCH_NAME:-unknown}" "${DECKY_LOADER_VERSION:-unknown}"
+  else
+    printf "Existing   : none\n"
+  fi
 }
 
 _defaults(){
@@ -52,6 +65,9 @@ _defaults(){
   CHANGING_PASSWORD=false
   SUDO_PASS=""
   readonly DECKY_TEMP_PASS="Decky!"
+  readonly PLUGIN_LOADER_SERVICE="/etc/systemd/system/plugin_loader.service"
+  DECKY_LOADER_BRANCH_NAME=""
+  DECKY_LOADER_VERSION=""
 }
 
 dispatch_action() {
@@ -176,6 +192,22 @@ preflight_check_sudo() {
   fi
 
   _error "Cannot verify sudo permissions for ${CURRENT_USER}: ${sudo_output}"
+}
+
+preflight_check_systemd() {
+  _has_command systemctl || _error "systemctl not found. This installer requires systemd."
+  local state
+  state=$(systemctl is-system-running 2>/dev/null || true)
+  case "${state}" in
+    running|degraded) ;;
+    *) _error "systemd is not running (state: ${state:-unknown})." ;;
+  esac
+}
+
+preflight_check_existing_install() {
+  [[ -f "${PLUGIN_LOADER_SERVICE}" ]] || return 0
+  DECKY_LOADER_BRANCH_NAME=$(grep '^# DECKY_LOADER_BRANCH_NAME=' "${PLUGIN_LOADER_SERVICE}" | cut -d= -f2 || true)
+  DECKY_LOADER_VERSION=$(grep '^# DECKY_LOADER_VERSION=' "${PLUGIN_LOADER_SERVICE}" | cut -d= -f2 || true)
 }
 
 interactive_menu(){
