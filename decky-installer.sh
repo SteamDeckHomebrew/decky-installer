@@ -36,7 +36,7 @@ preflight_checks(){
     IS_GUI=true
   fi
   _is_interactive || { IS_INTERACTIVE=false; IS_GUI=false; }
-  # check if root privelegies are available
+  preflight_check_sudo
   # github is available
   # mktemp
   # check if systemd is active
@@ -108,6 +108,47 @@ handle_err() {
 _require_command() {
     _has_command "$1" || _error "Required command not found in PATH: $1"
 }
+
+preflight_check_sudo() {
+  # Case 1: already root but no invoking user — cannot determine who to install for
+  if [[ "${EUID}" -eq 0 ]]; then
+    if [[ -z "${SUDO_USER:-}" ]]; then
+      _error "Running as root without an invoking user. Use 'sudo' instead of logging in as root."
+    fi
+    # Case 2: elevated via sudo — resolve the real user and proceed
+    CURRENT_USER="${SUDO_USER}"
+    return 0
+  fi
+
+  # Case 3: not root — verify sudo access without prompting
+  local sudo_output sudo_rc
+  sudo_output=$(sudo -n -l 2>&1) && sudo_rc=0 || sudo_rc=$?
+
+  if [[ "${sudo_rc}" -eq 0 ]]; then
+    return 0
+  fi
+
+  # 3.1 Check if user is not in sudoers at all
+  if echo "${sudo_output}" | grep -qE "not allowed|not in the sudoers"; then
+    _error "User ${CURRENT_USER} is not in the sudoers list."
+  fi
+
+  # 3.2 User is in sudoers but a password is required — check they actually have one
+  if echo "${sudo_output}" | grep -q "a password is required"; then
+    local passwd_status
+    passwd_status=$(passwd -S "${CURRENT_USER}" 2>/dev/null | awk '{print $2}' || true)
+    case "${passwd_status}" in
+      NP|L|LK)
+        _error "User ${CURRENT_USER} is in sudoers but has no usable password set." ;;
+      *)
+        # Password present (or status undetermined — proceed and let sudo prompt)
+        return 0 ;;
+    esac
+  fi
+
+  _error "Cannot verify sudo permissions for ${CURRENT_USER}: ${sudo_output}"
+}
+
 interactive_menu(){
   :
 }
