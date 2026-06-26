@@ -3,7 +3,7 @@
 # Use _msg or _error for important messages
 # They show in both terminal and hui
 # printf for debug messages
-VERSION=1.0.0
+DECKY_LOADER_VERSION=2.0.0
 
 set -euo pipefail
 trap 'handle_err "${LINENO:-?}"' ERR
@@ -76,7 +76,6 @@ _defaults(){
   readonly PLUGIN_LOADER_SERVICE="/etc/systemd/system/plugin_loader.service"
   readonly DECKY_LOADER_BASE_URL="https://api.github.com/repos/SteamDeckHomebrew/decky-loader"
   DECKY_LOADER_INSTALLED_RELEASE_TYPE=""
-  DECKY_LOADER_VERSION=""
   DECKY_LOADER_RELEASE_TYPE="release"
   USER_HOME=""
   HOMEBREW_FOLDER=""
@@ -89,7 +88,7 @@ dispatch_action() {
 
   case "$ACTION" in
     install) install "$@" ;;
-    uninstall) export_decky && uninstall ;;
+    uninstall) [[ -d "${HOMEBREW_FOLDER}" ]] && export_decky; uninstall ;;
     rollback) rollback "$@" ;;
     cleanup) cleanup "$@" ;;
     export) export_decky ;;
@@ -118,9 +117,9 @@ _msg() {
 }
 
 greeting() {
-  _msg "Decky Installer Suite ░▒▓█\nVersion ${VERSION}\nScript is downloaded from https://github.com/SteamDeckHomebrew/decky-installer\n\nIt is a script for installing Decky Loader"
+  _msg "Decky Installer Suite ░▒▓█\nVersion ${DECKY_LOADER_VERSION}\nScript is downloaded from https://github.com/SteamDeckHomebrew/decky-installer\n\nIt is a script for installing Decky Loader"
 }
-1
+
 _is_gui() {
     if [[ -n "${DISPLAY:-}" || -n "${WAYLAND_DISPLAY:-}" ]]; then
         return 0
@@ -321,11 +320,47 @@ export_decky() {
     --exclude="./archive" \
     . \
     || _error "Failed to create export archive."
-  _msg "Export complete: ${export_path}\nExport contains plugins, settings, and anything else user-facing"
+  _msg "Export complete: ${export_path}\nExport contains Decky plugins, settings, and anything else user-facing"
 }
 
 uninstall() {
-  _error "Not yet implemented: uninstall"
+  printf "Uninstalling Decky Loader...\n"
+
+  if systemctl is-active --quiet plugin_loader 2>/dev/null || \
+     systemctl is-enabled --quiet plugin_loader 2>/dev/null; then
+    printf "Stopping and disabling plugin_loader service...\n"
+    _sudo systemctl stop plugin_loader 2>/dev/null || true
+    _sudo systemctl disable plugin_loader 2>/dev/null || true
+  fi
+
+  if [[ -f "${PLUGIN_LOADER_SERVICE}" ]]; then
+    printf "Removing systemd unit file...\n"
+    _sudo rm -f "${PLUGIN_LOADER_SERVICE}"
+    _sudo systemctl daemon-reload
+  fi
+
+  local cef_paths=(
+    "${USER_HOME}/.steam/steam/.cef-enable-remote-debugging"
+    "${USER_HOME}/.var/app/com.valvesoftware.Steam/data/Steam/.cef-enable-remote-debugging"
+  )
+  for cef in "${cef_paths[@]}"; do
+    if [[ -f "${cef}" ]]; then
+      printf "Removing %s...\n" "${cef}"
+      rm -f "${cef}"
+    fi
+  done
+
+  if [[ -d /tmp/plugin_loader ]]; then
+    printf "Removing /tmp/plugin_loader...\n"
+    _sudo find /tmp/plugin_loader -delete
+  fi
+
+  if [[ -d "${HOMEBREW_FOLDER}" ]]; then
+    printf "Purging %s...\n" "${HOMEBREW_FOLDER}"
+    _sudo find "${HOMEBREW_FOLDER}" -delete
+  fi
+
+  _msg "Decky Loader uninstalled."
 }
 
 rollback() {
