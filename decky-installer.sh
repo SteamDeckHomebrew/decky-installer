@@ -269,8 +269,9 @@ install() {
   install_setup_dirs
   install_prepare_steam
   install_download_components
+  install_archive_components
   install_install_service
-  install_enable_service
+  doctor
 }
 
 install_require_root(){
@@ -320,10 +321,37 @@ install_download_components(){
   printf "%s" "${DECKY_LOADER_VERSION}" > "${WORKDIR}/.loader.version"
   printf "Download complete.\n"
 }
-install_install_service(){
-  :
+install_archive_components(){
+  local archive_dir="${HOMEBREW_FOLDER}/archive/${DECKY_LOADER_VERSION}"
+  printf "Archiving artifacts to %s...\n" "${archive_dir}"
+  mkdir -p "${archive_dir}"
+  cp "${WORKDIR}/PluginLoader" "${archive_dir}/PluginLoader"
+  cp "${WORKDIR}/.loader.version" "${archive_dir}/.loader.version"
+  {
+    printf "# DECKY_LOADER_RELEASE_TYPE=%s\n" "${DECKY_LOADER_RELEASE_TYPE}"
+    printf "# DECKY_LOADER_VERSION=%s\n" "${DECKY_LOADER_VERSION}"
+    cat "${WORKDIR}/plugin_loader-${DECKY_LOADER_RELEASE_TYPE}.service"
+  } > "${archive_dir}/plugin_loader.service"
 }
-install_enable_service(){
+install_install_service(){
+  local archive_dir="${HOMEBREW_FOLDER}/archive/${DECKY_LOADER_VERSION}"
+
+  if [[ -f "${PLUGIN_LOADER_SERVICE}" ]]; then
+    printf "Stopping existing service...\n"
+    _sudo systemctl stop plugin_loader 2>/dev/null || true
+  fi
+
+  printf "Installing PluginLoader to services...\n"
+  _sudo cp "${archive_dir}/PluginLoader" "${HOMEBREW_FOLDER}/services/PluginLoader"
+  _sudo cp "${archive_dir}/.loader.version" "${HOMEBREW_FOLDER}/services/.loader.version"
+
+  printf "Installing systemd unit...\n"
+  _sudo cp "${archive_dir}/plugin_loader.service" "${PLUGIN_LOADER_SERVICE}"
+  _sudo systemctl daemon-reload
+  printf "Enabling and starting plugin_loader...\n"
+  _sudo systemctl enable --now plugin_loader
+}
+doctor(){
   :
 }
 main "$@"
