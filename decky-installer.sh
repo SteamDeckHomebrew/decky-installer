@@ -6,13 +6,13 @@
 # 2. uninstall
 # 3. doctor
 # 4. Rollback to previous version
-# 5. Force clean
+# 5. Force cleanup
 # 6. export_decky
 VERSION=1.0.0
 
 set -euo pipefail
 trap 'handle_err "${LINENO:-?}"' ERR
-trap cleanup EXIT INT TERM
+trap cleanup_exit EXIT INT TERM
 
 main() {
   _defaults
@@ -92,7 +92,7 @@ dispatch_action() {
     install) install "$@" ;;
     uninstall) export_decky && uninstall ;;
     rollback) rollback "$@" ;;
-    clean) cleanup ;;
+    cleanup) cleanup "$@" ;;
     export) export_decky ;;
     help|"") help ;;
     *) _error "Unknown action: $ACTION" ;;
@@ -247,7 +247,7 @@ select_action(){
   # import
 }
 
-cleanup() {
+cleanup_exit() {
   if [[ "${CHANGING_PASSWORD:-false}" == true && -n "${SUDO_PASS:-}" ]]; then
     echo "${SUDO_PASS}" | sudo -S -k passwd -d "${CURRENT_USER}" 2>/dev/null || true
   fi
@@ -281,8 +281,35 @@ rollback() {
   _error "Not yet implemented: rollback"
 }
 
+cleanup() {
+  local keep="${1:-3}"
+  local archive_dir="${HOMEBREW_FOLDER}/archive"
+  [[ -d "${archive_dir}" ]] || { printf "No archive directory found.\n"; return 0; }
+
+  local -a versions
+  mapfile -t versions < <(find "${archive_dir}" -mindepth 1 -maxdepth 1 -type d -printf '%T@ %f\n' \
+    | sort -rn | awk '{print $2}')
+  local total="${#versions[@]}"
+
+  if [[ "${total}" -le "${keep}" ]]; then
+    printf "Nothing to cleanup (%d archived version(s), keeping %d).\n" "${total}" "${keep}"
+    return 0
+  fi
+
+  local -a to_delete=("${versions[@]:${keep}}")
+  local -a to_delete_paths=("${to_delete[@]/#/${archive_dir}/}")
+  local freed
+  freed=$(du -sch "${to_delete_paths[@]}" 2>/dev/null | tail -1 | awk '{print $1}')
+
+  printf "Removing %d old archive(s), keeping %d newest (freeing ~%s)...\n" \
+    "${#to_delete[@]}" "${keep}" "${freed}"
+  for version in "${to_delete[@]}"; do
+    printf "  Removing %s\n" "${version}"
+    _sudo rm -rf "${archive_dir:?}/${version}"
+  done
+}
+
 install() {
-  install_require_root
   install_setup_dirs
   install_prepare_steam
   install_download_components
@@ -291,10 +318,6 @@ install() {
   doctor
 }
 
-install_require_root(){
-  [[ "${EUID}" -eq 0 ]] || _has_command sudo || \
-    _error "Installation requires root or sudo access."
-}
 install_setup_dirs(){
   _sudo mkdir -p "${HOMEBREW_FOLDER}/services" "${HOMEBREW_FOLDER}/plugins"
   _sudo chown -R "${CURRENT_USER}":"${CURRENT_USER}" "${HOMEBREW_FOLDER}"
@@ -378,4 +401,4 @@ main "$@"
 # - Trap error
 # - Revert changes
 # - get back sudo password
-# - clean WORKDIR
+# - cleanup WORKDIR
