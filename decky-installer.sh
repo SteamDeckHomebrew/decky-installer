@@ -428,7 +428,32 @@ uninstall() {
 }
 
 rollback() {
-  _error "Not yet implemented: rollback"
+  local version="${1:-}"
+  local archive_dir="${HOMEBREW_FOLDER}/archive"
+
+  [[ -d "${archive_dir}" ]] || _error "No archive directory found at ${archive_dir}."
+
+  local -a versions
+  mapfile -t versions < <(find "${archive_dir}" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort -rV)
+  [[ "${#versions[@]}" -gt 0 ]] || _error "No archived versions found in ${archive_dir}."
+
+  if [[ -z "${version}" ]]; then
+    [[ "${IS_INTERACTIVE}" == true ]] || _error "rollback requires a version argument in non-interactive mode."
+    version=$(_select "Select version to roll back to:" "${versions[@]}") \
+      || _error "No version selected."
+  fi
+
+  local target_dir="${archive_dir}/${version}"
+  [[ -d "${target_dir}" ]] || _error "Version ${version} not found in archive.\nAvailable: ${versions[*]}"
+
+  DECKY_LOADER_VERSION="${version}"
+  DECKY_LOADER_RELEASE_TYPE=$(grep '^# DECKY_LOADER_RELEASE_TYPE=' "${target_dir}/plugin_loader.service" \
+    | cut -d= -f2 || true)
+  [[ -n "${DECKY_LOADER_RELEASE_TYPE}" ]] || DECKY_LOADER_RELEASE_TYPE="release"
+
+  printf "Rolling back to %s (%s)...\n" "${version}" "${DECKY_LOADER_RELEASE_TYPE}"
+  install_install_service
+  _msg "Rollback to ${version} complete."
 }
 
 cleanup() {
