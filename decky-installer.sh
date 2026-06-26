@@ -243,6 +243,8 @@ select_action(){
   # install prerelease
   # uninstall
   # doctor
+  # export
+  # import
 }
 
 cleanup() {
@@ -253,7 +255,22 @@ cleanup() {
 }
 
 export_decky() {
-  _error "Not yet implemented: export"
+  local timestamp downloads export_path
+  timestamp=$(date '+%Y-%m-%dT%H:%M:%S%z')
+  downloads="${USER_HOME}/Downloads"
+  export_path="${downloads}/decky-export-${timestamp}.tar.gz"
+
+  [[ -d "${downloads}" ]] || mkdir -p "${downloads}"
+
+  printf "Exporting Decky data to %s...\n" "${export_path}"
+  tar -czf "${export_path}" \
+    -C "${HOMEBREW_FOLDER}" \
+    --exclude="./services" \
+    --exclude="./archive" \
+    . \
+    || _error "Failed to create export archive."
+  printf "Export complete: %s\n" "${export_path}"
+  printf "Export contains plugins, settings, and anything else user-facing\n"
 }
 
 uninstall() {
