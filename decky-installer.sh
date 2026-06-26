@@ -92,6 +92,7 @@ dispatch_action() {
     rollback) rollback "$@" ;;
     cleanup) cleanup "$@" ;;
     export) export_decky ;;
+    import) import_decky "$@" ;;
     help|"") help ;;
     *) _error "Unknown action: $ACTION" ;;
   esac
@@ -281,7 +282,7 @@ _select() {
 interactive_menu() {
   local choice
   choice=$(_select "Choose an action:" \
-    "install" "uninstall" "rollback" "cleanup" "export" "doctor" "help") \
+    "install" "uninstall" "rollback" "cleanup" "export" "import" "doctor" "help") \
     || _error "No action selected."
 
   if [[ "${choice}" == "install" ]]; then
@@ -321,6 +322,69 @@ export_decky() {
     . \
     || _error "Failed to create export archive."
   _msg "Export complete: ${export_path}\nExport contains Decky plugins, settings, and anything else user-facing"
+}
+
+import_decky() {
+  local archive_path="${1:-}"
+  local strategy="${2:-}"
+
+  if [[ -z "${archive_path}" || -z "${strategy}" ]]; then
+    [[ "${IS_INTERACTIVE}" == true ]] || \
+      _error "import requires an archive path and strategy in non-interactive mode."
+
+    local source_choice
+    source_choice=$(_select "Select archive source:" \
+      "Enter path manually" "Find archive automatically") \
+      || _error "No source selected."
+
+    strategy=$(_select "How to treat existing data:" \
+      "backup-wipe-import" "merge-overwrite") \
+      || _error "No strategy selected."
+
+    case "${source_choice}" in
+      "Enter path manually")
+        printf "Enter absolute path to archive: " >&2
+        read -r archive_path </dev/tty || _error "Path entry cancelled."
+        ;;
+      "Find archive automatically")
+        local -a found
+        mapfile -t found < <(find "${USER_HOME}" -name "decky-export-*.tar.gz" 2>/dev/null | sort -r)
+        [[ "${#found[@]}" -gt 0 ]] || _error "No decky-export-*.tar.gz archives found in ${USER_HOME}."
+        archive_path=$(_select "Select archive to import:" "${found[@]}") \
+          || _error "No archive selected."
+        ;;
+    esac
+  fi
+
+  [[ -f "${archive_path}" ]] || _error "Archive not found: ${archive_path}"
+
+  case "${strategy}" in
+    backup-wipe-import)
+      if [[ -d "${HOMEBREW_FOLDER}" ]]; then
+        printf "Backing up existing data before wipe...\n"
+        export_decky
+        printf "Wiping user-facing content in %s...\n" "${HOMEBREW_FOLDER}"
+        find "${HOMEBREW_FOLDER}" -mindepth 1 -maxdepth 1 \
+          ! -name "services" ! -name "archive" \
+          -exec rm -rf {} +
+      fi
+      printf "Extracting %s into %s...\n" "${archive_path}" "${HOMEBREW_FOLDER}"
+      mkdir -p "${HOMEBREW_FOLDER}"
+      tar -xzf "${archive_path}" -C "${HOMEBREW_FOLDER}" \
+        || _error "Failed to extract archive."
+      ;;
+    merge-overwrite)
+      printf "Merging %s into %s...\n" "${archive_path}" "${HOMEBREW_FOLDER}"
+      mkdir -p "${HOMEBREW_FOLDER}"
+      tar -xzf "${archive_path}" -C "${HOMEBREW_FOLDER}" \
+        || _error "Failed to extract archive."
+      ;;
+    *)
+      _error "Unknown strategy: ${strategy}. Use 'backup-wipe-import' or 'merge-overwrite'."
+      ;;
+  esac
+
+  _msg "Import complete."
 }
 
 uninstall() {
