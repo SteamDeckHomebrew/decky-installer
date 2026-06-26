@@ -511,7 +511,6 @@ install_prepare_steam(){
   _msg "Steam remote debugging is enabled"
 }
 install_download_components(){
-  # Add check if version is already downloaded
   local release download_url
 
   local is_prerelease=false
@@ -533,6 +532,11 @@ install_download_components(){
     _error "Could not parse version from ${DECKY_LOADER_RELEASE_TYPE} release metadata."
   printf "Found version: %s\n" "${DECKY_LOADER_VERSION}"
 
+  if [[ -f "${HOMEBREW_FOLDER}/archive/${DECKY_LOADER_VERSION}/PluginLoader" ]]; then
+    printf "Version %s already in archive, skipping download.\n" "${DECKY_LOADER_VERSION}"
+    return 0
+  fi
+
   download_url=$(jq -r '.assets[].browser_download_url | select(endswith("PluginLoader"))' <<< "${release}")
   [[ -z "${download_url}" ]] && \
     _error "No PluginLoader asset found in ${DECKY_LOADER_RELEASE_TYPE} release ${DECKY_LOADER_VERSION}."
@@ -551,6 +555,7 @@ install_download_components(){
 }
 install_archive_components(){
   local archive_dir="${HOMEBREW_FOLDER}/archive/${DECKY_LOADER_VERSION}"
+  [[ -f "${archive_dir}/PluginLoader" ]] && return 0
   printf "Archiving artifacts to %s...\n" "${archive_dir}"
   mkdir -p "${archive_dir}"
   cp "${WORKDIR}/PluginLoader" "${archive_dir}/PluginLoader"
