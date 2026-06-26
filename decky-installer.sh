@@ -1,13 +1,8 @@
 #!/usr/bin/env bash
 # vim: set ft=bash ts=2 sw=2 sts=2 expandtab :
-# interactive menu:
-# 1. install
-# 1.1 select branch
-# 2. uninstall
-# 3. doctor
-# 4. Rollback to previous version
-# 5. Force cleanup
-# 6. export_decky
+# Use _msg or _error for important messages
+# They show in both terminal and hui
+# printf for debug messages
 VERSION=1.0.0
 
 set -euo pipefail
@@ -18,12 +13,15 @@ main() {
   _defaults
   [[ "${1:-}" == help ]] && help
   preflight_checks
-  [[ "${IS_INTERACTIVE}" == true ]] && interactive_menu
-  dispatch_action "$@"
+  if [[ "${IS_INTERACTIVE}" == true && $# -eq 0 ]]; then
+    interactive_menu
+  else
+    dispatch_action "$@"
+  fi
 }
 
 help(){
-  printf "█▓▒░ Decky Installer Suite\n"
+  _msg "Decky Installer Suite ░▒▓█\nhelp menu placeholder"
   exit 0
 }
 
@@ -42,6 +40,7 @@ preflight_checks(){
   preflight_check_systemd
   preflight_check_existing_install
   preflight_actions
+  greeting
   preflight_print_summary
 }
 
@@ -100,9 +99,28 @@ dispatch_action() {
 }
 
 _error() {
-  echo "ERROR: $*" >&2
+  while IFS= read -r line || [[ -n "${line}" ]]; do
+    printf "█▓▒░ ERROR: %s\n" "${line}" >&2
+  done < <(printf "%b" "$*")
+  if [[ "${IS_GUI:-false}" == true ]] && _has_command zenity; then
+    zenity --error --title="Decky Installer" --text="$(printf "%b" "$*")" --no-wrap 2>/dev/null || true
+  fi
   exit 1
 }
+
+_msg() {
+  while IFS= read -r line || [[ -n "${line}" ]]; do
+    printf "█▓▒░ %s\n" "${line}"
+  done < <(printf "%b" "$*")
+  if [[ "${IS_GUI:-false}" == true ]] && _has_command zenity; then
+    zenity --info --title="Decky Installer" --text="$(printf "%b" "$*")" --no-wrap 2>/dev/null || true
+  fi
+}
+
+greeting() {
+  _msg "Decky Installer Suite ░▒▓█\nVersion ${VERSION}\nScript is downloaded from https://github.com/SteamDeckHomebrew/decky-installer\n\nIt is a script for installing Decky Loader"
+}
+1
 _is_gui() {
     if [[ -n "${DISPLAY:-}" || -n "${WAYLAND_DISPLAY:-}" ]]; then
         return 0
@@ -144,20 +162,31 @@ _require_command() {
 _sudo() {
   if [[ "${EUID}" -eq 0 ]]; then
     "$@"
-  elif [[ -n "${SUDO_PASS:-}" ]]; then
-    echo "${SUDO_PASS}" | sudo -S "$@" 2>/dev/null
-  else
-    sudo "$@"
+    return
   fi
+
+  if [[ -n "${SUDO_PASS:-}" ]]; then
+    echo "${SUDO_PASS}" | sudo -S "$@" 2>/dev/null
+    return
+  fi
+
+  if sudo -n "$@" 2>/dev/null; then
+    return
+  fi
+
+  local pass
+  pass=$(_prompt_password "Enter sudo password for ${CURRENT_USER}: ") \
+    || _error "Password entry cancelled."
+  SUDO_PASS="${pass}"
+  echo "${SUDO_PASS}" | sudo -S "$@" 2>/dev/null
 }
 
 _prompt_password() {
   local prompt="${1:-Password: }" pass
   if [[ "${IS_GUI:-false}" == true ]] && _has_command zenity; then
-    pass=$(zenity --password --title="Decky Installer" 2>/dev/null) \
-      || _error "Password entry cancelled."
+    pass=$(zenity --password --title="Decky Installer" 2>/dev/null) || return 1
   else
-    read -rsp "${prompt}" pass
+    read -rsp "${prompt}" pass </dev/tty || return 1
     printf "\n" >&2
   fi
   printf "%s" "${pass}"
@@ -204,8 +233,10 @@ preflight_check_sudo() {
         [[ "${IS_INTERACTIVE}" != true ]] && \
           _error "User ${CURRENT_USER} requires a sudo password but the script is running non-interactively."
         local pass
+        _msg "Sudo password required for ${CURRENT_USER}."
         while true; do
-          pass=$(_prompt_password "Enter sudo password for ${CURRENT_USER}: ")
+          pass=$(_prompt_password "Enter sudo password for ${CURRENT_USER}: ") \
+            || _error "Password entry cancelled."
           if echo "${pass}" | sudo -S -k true 2>/dev/null; then
             SUDO_PASS="${pass}"
             return 0
@@ -234,17 +265,34 @@ preflight_check_existing_install() {
   DECKY_LOADER_VERSION=$(grep '^# DECKY_LOADER_VERSION=' "${PLUGIN_LOADER_SERVICE}" | cut -d= -f2 || true)
 }
 
-interactive_menu(){
-  :
+_select() {
+  local title="$1"; shift
+  local -a options=("$@")
+  if [[ "${IS_GUI}" == true ]]; then
+    zenity --list --title="Decky Installer" --text="${title}" \
+           --column="Action" --hide-header "${options[@]}"
+  else
+    printf "%s\n" "${title}" >&2
+    select opt in "${options[@]}"; do
+      [[ -n "${opt}" ]] && printf "%s" "${opt}" && return 0
+    done
+  fi
 }
-select_action(){
-  :
-  # install release
-  # install prerelease
-  # uninstall
-  # doctor
-  # export
-  # import
+
+interactive_menu() {
+  local choice
+  choice=$(_select "Choose an action:" \
+    "install" "uninstall" "rollback" "cleanup" "export" "doctor" "help") \
+    || _error "No action selected."
+
+  if [[ "${choice}" == "install" ]]; then
+    local branch
+    branch=$(_select "Select release branch:" "release" "prerelease") \
+      || _error "No branch selected."
+    DECKY_LOADER_RELEASE_TYPE="${branch}"
+  fi
+
+  dispatch_action "${choice}"
 }
 
 cleanup_exit() {
@@ -252,6 +300,10 @@ cleanup_exit() {
     echo "${SUDO_PASS}" | sudo -S -k passwd -d "${CURRENT_USER}" 2>/dev/null || true
   fi
   test -d "${WORKDIR:-/dev/null}" && find "${WORKDIR}" -delete
+  if [[ "${IS_INTERACTIVE:-false}" == true ]]; then
+    printf "█▓▒░ Press (A)/[Enter] to close terminal\n"
+    read -r _ </dev/tty 2>/dev/null || true
+  fi
 }
 
 export_decky() {
@@ -269,8 +321,7 @@ export_decky() {
     --exclude="./archive" \
     . \
     || _error "Failed to create export archive."
-  printf "Export complete: %s\n" "${export_path}"
-  printf "Export contains plugins, settings, and anything else user-facing\n"
+  _msg "Export complete: ${export_path}\nExport contains plugins, settings, and anything else user-facing"
 }
 
 uninstall() {
@@ -284,7 +335,7 @@ rollback() {
 cleanup() {
   local keep="${1:-3}"
   local archive_dir="${HOMEBREW_FOLDER}/archive"
-  [[ -d "${archive_dir}" ]] || { printf "No archive directory found.\n"; return 0; }
+  [[ -d "${archive_dir}" ]] || { _msg "No archive directory found."; return 0; }
 
   local -a versions
   mapfile -t versions < <(find "${archive_dir}" -mindepth 1 -maxdepth 1 -type d -printf '%T@ %f\n' \
@@ -292,7 +343,7 @@ cleanup() {
   local total="${#versions[@]}"
 
   if [[ "${total}" -le "${keep}" ]]; then
-    printf "Nothing to cleanup (%d archived version(s), keeping %d).\n" "${total}" "${keep}"
+    _msg "Nothing to cleanup (${total} archived version(s), keeping ${keep})."
     return 0
   fi
 
@@ -301,8 +352,7 @@ cleanup() {
   local freed
   freed=$(du -sch "${to_delete_paths[@]}" 2>/dev/null | tail -1 | awk '{print $1}')
 
-  printf "Removing %d old archive(s), keeping %d newest (freeing ~%s)...\n" \
-    "${#to_delete[@]}" "${keep}" "${freed}"
+  _msg "Removing ${#to_delete[@]} old archive(s), keeping ${keep} newest (freeing ~${freed})..."
   for version in "${to_delete[@]}"; do
     printf "  Removing %s\n" "${version}"
     _sudo rm -rf "${archive_dir:?}/${version}"
@@ -310,33 +360,47 @@ cleanup() {
 }
 
 install() {
+  printf "Installing Decky Loader (%s)...\n" "${DECKY_LOADER_RELEASE_TYPE}"
   install_setup_dirs
   install_prepare_steam
   install_download_components
   install_archive_components
   install_install_service
   doctor
+  _msg "Decky Loader ${DECKY_LOADER_VERSION} installed successfully."
 }
 
 install_setup_dirs(){
+  printf "Setting up directories in %s...\n" "${HOMEBREW_FOLDER}"
   _sudo mkdir -p "${HOMEBREW_FOLDER}/services" "${HOMEBREW_FOLDER}/plugins"
   _sudo chown -R "${CURRENT_USER}":"${CURRENT_USER}" "${HOMEBREW_FOLDER}"
   _sudo chown -R 0:0 "${HOMEBREW_FOLDER}/services"
 }
 install_prepare_steam(){
-  test -d "${USER_HOME}/.steam/steam/" && touch "${USER_HOME}/.steam/steam/.cef-enable-remote-debugging"
-  test -d "${USER_HOME}/.var/app/com.valvesoftware.Steam/data/Steam/" && touch "${USER_HOME}/.var/app/com.valvesoftware.Steam/data/Steam/.cef-enable-remote-debugging"
+  printf "Configuring Steam for remote debugging...\n"
+  if [[ -d "${USER_HOME}/.steam/steam/" ]]; then
+    touch "${USER_HOME}/.steam/steam/.cef-enable-remote-debugging"
+  fi
+  if [[ -d "${USER_HOME}/.var/app/com.valvesoftware.Steam/data/Steam/" ]]; then
+    touch "${USER_HOME}/.var/app/com.valvesoftware.Steam/data/Steam/.cef-enable-remote-debugging"
+  fi
+  _msg "Steam remote debugging is enabled"
 }
 install_download_components(){
+  # Add check if version is already downloaded
   local release download_url
 
   local is_prerelease=false
   [[ "${DECKY_LOADER_RELEASE_TYPE}" == prerelease ]] && is_prerelease=true
 
   printf "Fetching %s release info...\n" "${DECKY_LOADER_RELEASE_TYPE}"
-  release=$(curl -sf "${DECKY_LOADER_BASE_URL}/releases" \
-    | jq -r --argjson pre "${is_prerelease}" 'first(.[] | select(.prerelease == $pre))') \
+  local raw
+  raw=$(curl -sSf "${DECKY_LOADER_BASE_URL}/releases") \
     || _error "Failed to fetch release list from GitHub."
+  if jq -e '.message' <<< "${raw}" >/dev/null 2>&1; then
+    _error "GitHub API error: $(jq -r '.message' <<< "${raw}")"
+  fi
+  release=$(jq -r --argjson pre "${is_prerelease}" 'first(.[] | select(.prerelease == $pre))' <<< "${raw}")
   [[ -z "${release}" || "${release}" == null ]] && \
     _error "No ${DECKY_LOADER_RELEASE_TYPE} release found."
 
@@ -359,7 +423,7 @@ install_download_components(){
     || _error "Failed to download plugin_loader-${DECKY_LOADER_RELEASE_TYPE}.service."
 
   printf "%s" "${DECKY_LOADER_VERSION}" > "${WORKDIR}/.loader.version"
-  printf "Download complete.\n"
+  _msg "Download complete."
 }
 install_archive_components(){
   local archive_dir="${HOMEBREW_FOLDER}/archive/${DECKY_LOADER_VERSION}"
@@ -390,6 +454,7 @@ install_install_service(){
   _sudo systemctl daemon-reload
   printf "Enabling and starting plugin_loader...\n"
   _sudo systemctl enable --now plugin_loader
+  _msg "Service plugin_loader enabled and started."
 }
 doctor(){
   :
