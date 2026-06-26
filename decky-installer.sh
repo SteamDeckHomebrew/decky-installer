@@ -42,7 +42,10 @@ preflight_checks(){
   preflight_check_systemd
   preflight_check_existing_install
   # github is available
-  WORKDIR="$(mktemp -d)"
+  preflight_print_summary
+}
+
+preflight_print_summary() {
   local elevated=false
   [[ "${EUID}" -eq 0 ]] && elevated=true
   printf "User       : %s\n" "${CURRENT_USER}"
@@ -68,6 +71,7 @@ _defaults(){
   readonly PLUGIN_LOADER_SERVICE="/etc/systemd/system/plugin_loader.service"
   DECKY_LOADER_BRANCH_NAME=""
   DECKY_LOADER_VERSION=""
+  WORKDIR="$(mktemp -d)"
 }
 
 dispatch_action() {
