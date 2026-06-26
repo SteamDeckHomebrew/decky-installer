@@ -50,6 +50,8 @@ _defaults(){
   IS_GUI=false
   IS_INTERACTIVE=true
   CHANGING_PASSWORD=false
+  SUDO_PASS=""
+  readonly DECKY_TEMP_PASS="Decky!"
 }
 
 dispatch_action() {
@@ -109,6 +111,18 @@ _require_command() {
     _has_command "$1" || _error "Required command not found in PATH: $1"
 }
 
+_prompt_password() {
+  local prompt="${1:-Password: }" pass
+  if [[ "${IS_GUI:-false}" == true ]] && _has_command zenity; then
+    pass=$(zenity --password --title="Decky Installer" 2>/dev/null) \
+      || _error "Password entry cancelled."
+  else
+    read -rsp "${prompt}" pass
+    printf "\n" >&2
+  fi
+  printf "%s" "${pass}"
+}
+
 preflight_check_sudo() {
   # Case 1: already root but no invoking user — cannot determine who to install for
   if [[ "${EUID}" -eq 0 ]]; then
@@ -138,11 +152,26 @@ preflight_check_sudo() {
     local passwd_status
     passwd_status=$(passwd -S "${CURRENT_USER}" 2>/dev/null | awk '{print $2}' || true)
     case "${passwd_status}" in
-      NP|L|LK)
-        _error "User ${CURRENT_USER} is in sudoers but has no usable password set." ;;
-      *)
-        # Password present (or status undetermined — proceed and let sudo prompt)
+      NP)
+        printf "WARNING: No admin password set. Temporarily setting password to '%s' for this installation.\n" "${DECKY_TEMP_PASS}" >&2
+        yes "${DECKY_TEMP_PASS}" | passwd "${CURRENT_USER}"
+        SUDO_PASS="${DECKY_TEMP_PASS}"
+        CHANGING_PASSWORD=true
         return 0 ;;
+      L|LK)
+        _error "User ${CURRENT_USER} account is locked and requires a password for sudo. Cannot proceed." ;;
+      *)
+        [[ "${IS_INTERACTIVE}" != true ]] && \
+          _error "User ${CURRENT_USER} requires a sudo password but the script is running non-interactively."
+        local pass
+        while true; do
+          pass=$(_prompt_password "Enter sudo password for ${CURRENT_USER}: ")
+          if echo "${pass}" | sudo -S -k true 2>/dev/null; then
+            SUDO_PASS="${pass}"
+            return 0
+          fi
+          printf "Incorrect password, try again.\n" >&2
+        done ;;
     esac
   fi
 
@@ -161,6 +190,9 @@ select_action(){
 }
 
 cleanup() {
+  if [[ "${CHANGING_PASSWORD:-false}" == true && -n "${SUDO_PASS:-}" ]]; then
+    echo "${SUDO_PASS}" | sudo -S -k passwd -d "${CURRENT_USER}" 2>/dev/null || true
+  fi
   test -d "${WORKDIR:-/dev/null}" && find "${WORKDIR}" -delete
 }
 
