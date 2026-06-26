@@ -41,8 +41,14 @@ preflight_checks(){
   preflight_check_sudo
   preflight_check_systemd
   preflight_check_existing_install
-  # github is available
+  preflight_actions
   preflight_print_summary
+}
+
+preflight_actions() {
+  USER_HOME="$(getent passwd "${CURRENT_USER}" | cut -d: -f6)"
+  HOMEBREW_FOLDER="${USER_HOME}/homebrew"
+  WORKDIR="$(mktemp -d)"
 }
 
 preflight_print_summary() {
@@ -56,7 +62,7 @@ preflight_print_summary() {
   printf "Temp pass  : %s\n" "${CHANGING_PASSWORD}"
   if [[ -f "${PLUGIN_LOADER_SERVICE}" ]]; then
     printf "Existing   : branch=%s version=%s\n" \
-      "${DECKY_LOADER_BRANCH_NAME:-unknown}" "${DECKY_LOADER_VERSION:-unknown}"
+      "${DECKY_LOADER_INSTALLED_RELEASE_TYPE:-unknown}" "${DECKY_LOADER_VERSION:-unknown}"
   else
     printf "Existing   : none\n"
   fi
@@ -69,17 +75,21 @@ _defaults(){
   SUDO_PASS=""
   readonly DECKY_TEMP_PASS="Decky!"
   readonly PLUGIN_LOADER_SERVICE="/etc/systemd/system/plugin_loader.service"
-  DECKY_LOADER_BRANCH_NAME=""
+  readonly DECKY_LOADER_BASE_URL="https://api.github.com/repos/SteamDeckHomebrew/decky-loader"
+  DECKY_LOADER_INSTALLED_RELEASE_TYPE=""
   DECKY_LOADER_VERSION=""
-  WORKDIR="$(mktemp -d)"
+  DECKY_LOADER_RELEASE_TYPE="release"
+  USER_HOME=""
+  HOMEBREW_FOLDER=""
+  WORKDIR=""
 }
 
 dispatch_action() {
   local ACTION="${1:-}"
-  shift
+  [[ $# -gt 0 ]] && shift
 
   case "$ACTION" in
-    install) install "$@" && cleanup;;
+    install) install "$@" ;;
     uninstall) export_decky && uninstall ;;
     rollback) rollback "$@" ;;
     clean) cleanup ;;
@@ -129,6 +139,16 @@ handle_err() {
 
 _require_command() {
     _has_command "$1" || _error "Required command not found in PATH: $1"
+}
+
+_sudo() {
+  if [[ "${EUID}" -eq 0 ]]; then
+    "$@"
+  elif [[ -n "${SUDO_PASS:-}" ]]; then
+    echo "${SUDO_PASS}" | sudo -S "$@" 2>/dev/null
+  else
+    sudo "$@"
+  fi
 }
 
 _prompt_password() {
@@ -210,7 +230,7 @@ preflight_check_systemd() {
 
 preflight_check_existing_install() {
   [[ -f "${PLUGIN_LOADER_SERVICE}" ]] || return 0
-  DECKY_LOADER_BRANCH_NAME=$(grep '^# DECKY_LOADER_BRANCH_NAME=' "${PLUGIN_LOADER_SERVICE}" | cut -d= -f2 || true)
+  DECKY_LOADER_INSTALLED_RELEASE_TYPE=$(grep '^# DECKY_LOADER_RELEASE_TYPE=' "${PLUGIN_LOADER_SERVICE}" | cut -d= -f2 || true)
   DECKY_LOADER_VERSION=$(grep '^# DECKY_LOADER_VERSION=' "${PLUGIN_LOADER_SERVICE}" | cut -d= -f2 || true)
 }
 
@@ -254,19 +274,51 @@ install() {
 }
 
 install_require_root(){
-  :
+  [[ "${EUID}" -eq 0 ]] || _has_command sudo || \
+    _error "Installation requires root or sudo access."
 }
 install_setup_dirs(){
-  mkdir -p ~/homebrew/services/ ~/homebrew/plugins/
-  chown -R "${CURRENT_USER}":"${CURRENT_USER}" ~/homebrew/
-  chown -R 0:0 ~/homebrew/services/
+  _sudo mkdir -p "${HOMEBREW_FOLDER}/services" "${HOMEBREW_FOLDER}/plugins"
+  _sudo chown -R "${CURRENT_USER}":"${CURRENT_USER}" "${HOMEBREW_FOLDER}"
+  _sudo chown -R 0:0 "${HOMEBREW_FOLDER}/services"
 }
 install_prepare_steam(){
-  test -d "${HOME}/.steam/steam/" && touch "${HOME}/.steam/steam/.cef-enable-remote-debugging"
-  test -d "${HOME}/.var/app/com.valvesoftware.Steam/data/Steam/" && touch "${HOME}/.var/app/com.valvesoftware.Steam/data/Steam/.cef-enable-remote-debugging"
+  test -d "${USER_HOME}/.steam/steam/" && touch "${USER_HOME}/.steam/steam/.cef-enable-remote-debugging"
+  test -d "${USER_HOME}/.var/app/com.valvesoftware.Steam/data/Steam/" && touch "${USER_HOME}/.var/app/com.valvesoftware.Steam/data/Steam/.cef-enable-remote-debugging"
 }
 install_download_components(){
-  :
+  local release download_url
+
+  local is_prerelease=false
+  [[ "${DECKY_LOADER_RELEASE_TYPE}" == prerelease ]] && is_prerelease=true
+
+  printf "Fetching %s release info...\n" "${DECKY_LOADER_RELEASE_TYPE}"
+  release=$(curl -sf "${DECKY_LOADER_BASE_URL}/releases" \
+    | jq -r --argjson pre "${is_prerelease}" 'first(.[] | select(.prerelease == $pre))') \
+    || _error "Failed to fetch release list from GitHub."
+  [[ -z "${release}" || "${release}" == null ]] && \
+    _error "No ${DECKY_LOADER_RELEASE_TYPE} release found."
+
+  DECKY_LOADER_VERSION=$(jq -r '.tag_name' <<< "${release}")
+  [[ -z "${DECKY_LOADER_VERSION}" || "${DECKY_LOADER_VERSION}" == null ]] && \
+    _error "Could not parse version from ${DECKY_LOADER_RELEASE_TYPE} release metadata."
+  printf "Found version: %s\n" "${DECKY_LOADER_VERSION}"
+
+  download_url=$(jq -r '.assets[].browser_download_url | select(endswith("PluginLoader"))' <<< "${release}")
+  [[ -z "${download_url}" ]] && \
+    _error "No PluginLoader asset found in ${DECKY_LOADER_RELEASE_TYPE} release ${DECKY_LOADER_VERSION}."
+
+  printf "Downloading PluginLoader %s...\n" "${DECKY_LOADER_VERSION}"
+  curl -Lf "${download_url}" -o "${WORKDIR}/PluginLoader" \
+    || _error "Failed to download PluginLoader ${DECKY_LOADER_VERSION}."
+
+  printf "Downloading plugin_loader service file...\n"
+  curl -Lf "https://raw.githubusercontent.com/SteamDeckHomebrew/decky-loader/main/dist/plugin_loader-${DECKY_LOADER_RELEASE_TYPE}.service" \
+    -o "${WORKDIR}/plugin_loader-${DECKY_LOADER_RELEASE_TYPE}.service" \
+    || _error "Failed to download plugin_loader-${DECKY_LOADER_RELEASE_TYPE}.service."
+
+  printf "%s" "${DECKY_LOADER_VERSION}" > "${WORKDIR}/.loader.version"
+  printf "Download complete.\n"
 }
 install_install_service(){
   :
