@@ -467,13 +467,13 @@ import_decky() {
       fi
       _msg "Extracting ${archive_path} into ${HOMEBREW_FOLDER}..."
       mkdir -p "${HOMEBREW_FOLDER}"
-      tar -xzf -- "${archive_path}" -C "${HOMEBREW_FOLDER}" \
+      tar -xzf "${archive_path}" -C "${HOMEBREW_FOLDER}" \
         || _error "Failed to extract archive."
       ;;
     merge-overwrite)
       _msg "Merging ${archive_path} into ${HOMEBREW_FOLDER}..."
       mkdir -p "${HOMEBREW_FOLDER}"
-      tar -xzf -- "${archive_path}" -C "${HOMEBREW_FOLDER}" \
+      tar -xzf "${archive_path}" -C "${HOMEBREW_FOLDER}" \
         || _error "Failed to extract archive."
       ;;
     *)
