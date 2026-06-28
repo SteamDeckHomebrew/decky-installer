@@ -21,15 +21,35 @@ main() {
 }
 
 help(){
-  _msg "Decky Installer Suite ░▒▓█\nhelp menu placeholder"
+  _msg 'Decky Installer Suite ░▒▓█
+Usage: decky-installer.sh [action] [args]
+
+Actions:
+  install [version]               Install Decky Loader (latest or specific version, e.g. v2.14.1)
+  uninstall                       Remove Decky Loader and all data
+  rollback [version]              Roll back to an archived version
+  cleanup [keep]                  Delete old archived versions (default: keep 3)
+  export                          Export plugins/settings to ~/Downloads/decky-export-*.tar.gz
+  import <archive> <strategy>     Restore from export; strategy: backup-wipe-import | merge-overwrite
+  doctor                          Run post-install health checks
+  help                            Show this message
+
+Environment:
+  DECKY_LOADER_RELEASE_TYPE=prerelease   Install prerelease instead of stable
+  GITHUB_TOKEN=<token>                   Authenticate GitHub API calls (avoids 60 req/hr limit)'
   exit 0
 }
 
 preflight_checks(){
   # shellcheck source=/dev/null
-  . /etc/os-release
-  OS_NAME="${NAME:-unknown}"
+  OS_NAME=$(. /etc/os-release 2>/dev/null; printf '%s' "${NAME:-unknown}")
   CURRENT_USER=$(id -un)
+  # Resolve the real invoking user if already running as root (e.g. via sudo)
+  if [[ "${EUID}" -eq 0 ]]; then
+    [[ -n "${SUDO_USER:-}" ]] \
+      || _error "Running as root without an invoking user. Use 'sudo' instead of logging in as root."
+    CURRENT_USER="${SUDO_USER}"
+  fi
   _require_command sudo
   _require_command curl
   _require_command jq
@@ -37,7 +57,6 @@ preflight_checks(){
     IS_GUI=true
   fi
   _is_interactive || { IS_INTERACTIVE=false; IS_GUI=false; }
-  preflight_check_sudo
   preflight_check_systemd
   preflight_check_existing_install
   preflight_actions
@@ -54,18 +73,14 @@ preflight_actions() {
 preflight_print_summary() {
   local elevated=false
   [[ "${EUID}" -eq 0 ]] && elevated=true
-  printf "User       : %s\n" "${CURRENT_USER}"
-  printf "OS         : %s\n" "${OS_NAME}"
-  printf "Interactive: %s\n" "${IS_INTERACTIVE}"
-  printf "GUI        : %s\n" "${IS_GUI}"
-  printf "Elevated   : %s\n" "${elevated}"
-  printf "Temp pass  : %s\n" "${CHANGING_PASSWORD}"
-  if [[ -f "${PLUGIN_LOADER_SERVICE}" ]]; then
-    printf "Existing   : branch=%s version=%s\n" \
-      "${DECKY_LOADER_INSTALLED_RELEASE_TYPE:-unknown}" "${DECKY_LOADER_VERSION:-unknown}"
-  else
-    printf "Existing   : none\n"
-  fi
+  _msg "User       : ${CURRENT_USER}
+OS         : ${OS_NAME}
+Interactive: ${IS_INTERACTIVE}
+GUI        : ${IS_GUI}
+Elevated   : ${elevated}
+Temp pass  : ${CHANGING_PASSWORD}
+Current DeckyLoader version: ${DECKY_LOADER_VERSION:-none}
+Current DeckyLoader branch : ${DECKY_LOADER_INSTALLED_RELEASE_TYPE:-none}"
 }
 
 _defaults(){
@@ -74,6 +89,8 @@ _defaults(){
   CHANGING_PASSWORD=false
   SUDO_PASS=""
   _GUI_FD=""
+  OS_NAME=""
+  CURRENT_USER=""
   readonly DECKY_TEMP_PASS="Decky!"
   readonly PLUGIN_LOADER_SERVICE="/etc/systemd/system/plugin_loader.service"
   readonly DECKY_LOADER_BASE_URL="https://api.github.com/repos/SteamDeckHomebrew/decky-loader"
@@ -91,6 +108,11 @@ dispatch_action() {
   [[ $# -gt 0 ]] && shift
 
   [[ "${ACTION}" == "help" || -z "${ACTION}" ]] || _gui_open
+
+  # Only verify/obtain sudo credentials for actions that actually need root
+  case "$ACTION" in
+    install|uninstall|rollback|cleanup) preflight_check_sudo ;;
+  esac
 
   case "$ACTION" in
     install) install "$@" ;;
@@ -128,22 +150,24 @@ _gui_update() {
 }
 
 _error() {
+  local text="${*//\\n/$'\n'}"
   while IFS= read -r line || [[ -n "${line}" ]]; do
     printf "█▓▒░ ERROR: %s\n" "${line}" >&2
-  done < <(printf "%b" "$*")
+  done <<< "${text}"
   _gui_close
   if [[ "${IS_GUI:-false}" == true ]] && _has_command zenity; then
-    zenity --error --title="Decky Installer" --text="$(printf "%b" "$*")" --no-wrap 2>/dev/null || true
+    zenity --error --title="Decky Installer" --text="${text}" --no-wrap 2>/dev/null || true
   fi
   exit 1
 }
 
 _msg() {
+  local text="${*//\\n/$'\n'}"
   while IFS= read -r line || [[ -n "${line}" ]]; do
     printf "█▓▒░ %s\n" "${line}"
-  done < <(printf "%b" "$*")
+  done <<< "${text}"
   if [[ "${IS_GUI:-false}" == true ]] && _has_command zenity; then
-    _gui_update "$*"
+    _gui_update "${text}"
   fi
 }
 
@@ -165,6 +189,14 @@ _is_ssh() {
 
 _has_command() {
   command -v "$1" >/dev/null 2>&1
+}
+
+# Wrapper for GitHub API calls — passes auth token when GITHUB_TOKEN is set,
+# avoiding the 60 req/hr anonymous rate limit.
+_github_curl() {
+  local -a auth=()
+  [[ -n "${GITHUB_TOKEN:-}" ]] && auth=(-H "Authorization: Bearer ${GITHUB_TOKEN}")
+  curl "${auth[@]}" "$@"
 }
 
 handle_err() {
@@ -222,17 +254,10 @@ _prompt_text() {
 }
 
 preflight_check_sudo() {
-  # Case 1: already root but no invoking user — cannot determine who to install for
-  if [[ "${EUID}" -eq 0 ]]; then
-    if [[ -z "${SUDO_USER:-}" ]]; then
-      _error "Running as root without an invoking user. Use 'sudo' instead of logging in as root."
-    fi
-    # Case 2: elevated via sudo — resolve the real user and proceed
-    CURRENT_USER="${SUDO_USER}"
-    return 0
-  fi
+  # Already root (resolved in preflight_checks) — nothing to do here
+  [[ "${EUID}" -eq 0 ]] && return 0
 
-  # Case 3: not root — verify sudo access without prompting
+  # Not root — verify sudo access without prompting
   local sudo_output sudo_rc
   sudo_output=$(sudo -n -l 2>&1) && sudo_rc=0 || sudo_rc=$?
 
@@ -240,18 +265,20 @@ preflight_check_sudo() {
     return 0
   fi
 
-  # 3.1 Check if user is not in sudoers at all
+  # Check if user is not in sudoers at all
   if grep -qE "not allowed|not in the sudoers" <<<"${sudo_output}"; then
     _error "User ${CURRENT_USER} is not in the sudoers list."
   fi
 
-  # 3.2 User is in sudoers but a password is required — check they actually have one
+  # User is in sudoers but a password is required — check they actually have one
   if grep -q "a password is required" <<<"${sudo_output}"; then
     local passwd_status
     passwd_status=$(passwd -S "${CURRENT_USER}" 2>/dev/null | awk '{print $2}' || true)
     case "${passwd_status}" in
       NP)
-        printf "WARNING: No admin password set. Temporarily setting password to '%s' for this installation.\n" "${DECKY_TEMP_PASS}" >&2
+        _msg "WARNING: No sudo password set for ${CURRENT_USER}.
+WARNING: Temporarily setting account password to '${DECKY_TEMP_PASS}' for this session.
+WARNING: It will be cleared on exit. Do NOT interrupt the script with SIGKILL."
         yes "${DECKY_TEMP_PASS}" | passwd "${CURRENT_USER}"
         SUDO_PASS="${DECKY_TEMP_PASS}"
         CHANGING_PASSWORD=true
@@ -270,7 +297,7 @@ preflight_check_sudo() {
             SUDO_PASS="${pass}"
             return 0
           fi
-          printf "Incorrect password, try again.\n" >&2
+          _msg "Incorrect password, try again."
         done ;;
     esac
   fi
@@ -357,7 +384,7 @@ cleanup_exit() {
 
 export_decky() {
   local timestamp downloads export_path
-  timestamp=$(date '+%Y-%m-%dT%H:%M:%S%z')
+  timestamp=$(date '+%Y%m%dT%H%M%S%z')
   downloads="${USER_HOME}/Downloads"
   export_path="${downloads}/decky-export-${timestamp}.tar.gz"
 
@@ -417,7 +444,7 @@ import_decky() {
         _msg "Wiping user-facing content in ${HOMEBREW_FOLDER}..."
         find "${HOMEBREW_FOLDER}" -mindepth 1 -maxdepth 1 \
           ! -name "services" ! -name "archive" \
-          -exec find {} -delete \;
+          -exec rm -rf -- {} +
       fi
       _msg "Extracting ${archive_path} into ${HOMEBREW_FOLDER}..."
       mkdir -p "${HOMEBREW_FOLDER}"
@@ -576,7 +603,7 @@ install_download_components(){
 
   if [[ -n "${DECKY_LOADER_TARGET_VERSION}" ]]; then
     _msg "Fetching release info for ${DECKY_LOADER_TARGET_VERSION}..."
-    raw=$(curl -sSf "${DECKY_LOADER_BASE_URL}/releases/tags/${DECKY_LOADER_TARGET_VERSION}") \
+    raw=$(_github_curl -sSf "${DECKY_LOADER_BASE_URL}/releases/tags/${DECKY_LOADER_TARGET_VERSION}") \
       || _error "Failed to fetch release ${DECKY_LOADER_TARGET_VERSION} from GitHub."
     if jq -e '.message' <<< "${raw}" >/dev/null 2>&1; then
       _error "GitHub API error: $(jq -r '.message' <<< "${raw}")"
@@ -588,7 +615,7 @@ install_download_components(){
     [[ "${DECKY_LOADER_RELEASE_TYPE}" == prerelease ]] && is_prerelease=true
 
     _msg "Fetching ${DECKY_LOADER_RELEASE_TYPE} release info..."
-    raw=$(curl -sSf "${DECKY_LOADER_BASE_URL}/releases") \
+    raw=$(_github_curl -sSf "${DECKY_LOADER_BASE_URL}/releases") \
       || _error "Failed to fetch release list from GitHub."
     if jq -e '.message' <<< "${raw}" >/dev/null 2>&1; then
       _error "GitHub API error: $(jq -r '.message' <<< "${raw}")"
@@ -630,6 +657,7 @@ install_archive_components(){
   _msg "Archiving artifacts to ${archive_dir}..."
   mkdir -p "${archive_dir}"
   cp "${WORKDIR}/PluginLoader" "${archive_dir}/PluginLoader"
+  chmod +x "${archive_dir}/PluginLoader"
   cp "${WORKDIR}/.loader.version" "${archive_dir}/.loader.version"
   {
     printf "# DECKY_LOADER_RELEASE_TYPE=%s\n" "${DECKY_LOADER_RELEASE_TYPE}"
@@ -647,6 +675,7 @@ install_install_service(){
 
   _msg "Installing PluginLoader to services..."
   _sudo cp "${archive_dir}/PluginLoader" "${HOMEBREW_FOLDER}/services/PluginLoader"
+  _sudo chmod +x "${HOMEBREW_FOLDER}/services/PluginLoader"
   _sudo cp "${archive_dir}/.loader.version" "${HOMEBREW_FOLDER}/services/.loader.version"
 
   _msg "Installing systemd unit..."
