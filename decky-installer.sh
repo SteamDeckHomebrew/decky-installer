@@ -135,9 +135,7 @@ dispatch_action() {
 
   case "$ACTION" in
     install) install "$@" ;;
-    uninstall)
-      if [[ -d "${HOMEBREW_FOLDER}" ]]; then export_decky; fi
-      uninstall ;;
+    uninstall) uninstall ;;
     rollback) rollback "$@" ;;
     cleanup) cleanup "$@" ;;
     export) export_decky ;;
@@ -488,6 +486,10 @@ import_decky() {
 uninstall() {
   _confirm "This will permanently remove Decky Loader and all data in ${HOMEBREW_FOLDER}. Continue?" \
     || { _msg "Uninstall cancelled."; return 0; }
+  if [[ -d "${HOMEBREW_FOLDER}" ]]; then
+    _msg "Backing up Decky data before removal..."
+    export_decky
+  fi
   _msg "Uninstalling Decky Loader..."
 
   if systemctl is-active --quiet plugin_loader 2>/dev/null || \
