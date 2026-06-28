@@ -339,7 +339,7 @@ _select() {
   local -a options=("$@")
   if [[ "${IS_GUI}" == true ]]; then
     zenity --list --title="Decky Installer" --text="${title}" \
-           --column="Action" --hide-header "${options[@]}"
+           --column="Action" --hide-header "${options[@]}" 2>/dev/null
   else
     printf "%s\n" "${title}" >&2
     select opt in "${options[@]}"; do
