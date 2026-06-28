@@ -68,6 +68,7 @@ preflight_actions() {
   USER_HOME="$(getent passwd "${CURRENT_USER}" | cut -d: -f6)"
   HOMEBREW_FOLDER="${USER_HOME}/homebrew"
   WORKDIR="$(mktemp -d)"
+  _init_cef_paths
 }
 
 preflight_print_summary() {
@@ -101,6 +102,24 @@ _defaults(){
   USER_HOME=""
   HOMEBREW_FOLDER=""
   WORKDIR=""
+  CEF_PATHS=()
+  if [[ -t 1 ]]; then
+    CLR_RED='\033[0;31m'
+    CLR_GREEN='\033[0;32m'
+    CLR_YELLOW='\033[1;33m'
+    CLR_BLUE='\033[0;34m'
+    CLR_CYAN='\033[0;36m'
+    CLR_NC='\033[0m'
+  else
+    CLR_RED='' CLR_GREEN='' CLR_YELLOW='' CLR_BLUE='' CLR_CYAN='' CLR_NC=''
+  fi
+}
+
+_init_cef_paths() {
+  CEF_PATHS=(
+    "${USER_HOME}/.steam/steam/.cef-enable-remote-debugging"
+    "${USER_HOME}/.var/app/com.valvesoftware.Steam/data/Steam/.cef-enable-remote-debugging"
+  )
 }
 
 dispatch_action() {
@@ -152,7 +171,7 @@ _gui_update() {
 _error() {
   local text="${*//\\n/$'\n'}"
   while IFS= read -r line || [[ -n "${line}" ]]; do
-    printf "█▓▒░ ERROR: %s\n" "${line}" >&2
+    printf "%b█▓▒░ ERROR:%b %s\n" "${CLR_RED}" "${CLR_NC}" "${line}" >&2
   done <<< "${text}"
   _gui_close
   if [[ "${IS_GUI:-false}" == true ]] && _has_command zenity; then
@@ -164,7 +183,7 @@ _error() {
 _msg() {
   local text="${*//\\n/$'\n'}"
   while IFS= read -r line || [[ -n "${line}" ]]; do
-    printf "█▓▒░ %s\n" "${line}"
+    printf "%b█▓▒░%b %s\n" "${CLR_CYAN}" "${CLR_NC}" "${line}"
   done <<< "${text}"
   if [[ "${IS_GUI:-false}" == true ]] && _has_command zenity; then
     _gui_update "${text}"
@@ -483,11 +502,7 @@ uninstall() {
     _sudo systemctl daemon-reload
   fi
 
-  local cef_paths=(
-    "${USER_HOME}/.steam/steam/.cef-enable-remote-debugging"
-    "${USER_HOME}/.var/app/com.valvesoftware.Steam/data/Steam/.cef-enable-remote-debugging"
-  )
-  for cef in "${cef_paths[@]}"; do
+  for cef in "${CEF_PATHS[@]}"; do
     if [[ -f "${cef}" ]]; then
       _msg "Removing ${cef}..."
       rm -f "${cef}"
@@ -533,6 +548,7 @@ rollback() {
 
   _msg "Rolling back to ${version} (${DECKY_LOADER_RELEASE_TYPE})..."
   install_install_service
+  doctor
   _msg "Rollback to ${version} complete."
 }
 
@@ -590,12 +606,9 @@ install_setup_dirs(){
 }
 install_prepare_steam(){
   _msg "Configuring Steam for remote debugging..."
-  if [[ -d "${USER_HOME}/.steam/steam/" ]]; then
-    touch "${USER_HOME}/.steam/steam/.cef-enable-remote-debugging"
-  fi
-  if [[ -d "${USER_HOME}/.var/app/com.valvesoftware.Steam/data/Steam/" ]]; then
-    touch "${USER_HOME}/.var/app/com.valvesoftware.Steam/data/Steam/.cef-enable-remote-debugging"
-  fi
+  for cef in "${CEF_PATHS[@]}"; do
+    [[ -d "$(dirname "${cef}")" ]] && touch "${cef}"
+  done
   _msg "Steam remote debugging is enabled"
 }
 install_download_components(){
@@ -685,7 +698,163 @@ install_install_service(){
   _sudo systemctl enable --now plugin_loader
   _msg "Service plugin_loader enabled and started."
 }
-doctor(){
-  :
+_DOCTOR_OUTPUT=""
+
+_doctor_pass() {
+  printf "%b[PASS]%b %s\n" "${CLR_GREEN}" "${CLR_NC}" "$*"
+  _DOCTOR_OUTPUT+="[PASS] $*\n"
+  _gui_update "[PASS] $*"
+}
+_doctor_fail() {
+  printf "%b[FAIL]%b %s\n" "${CLR_RED}" "${CLR_NC}" "$*"
+  _DOCTOR_OUTPUT+="[FAIL] $*\n"
+  _gui_update "[FAIL] $*"
+}
+_doctor_warn() {
+  printf "%b[WARN]%b %s\n" "${CLR_YELLOW}" "${CLR_NC}" "$*"
+  _DOCTOR_OUTPUT+="[WARN] $*\n"
+  _gui_update "[WARN] $*"
+}
+_doctor_info() {
+  printf "%b[INFO]%b %s\n" "${CLR_CYAN}" "${CLR_NC}" "$*"
+  _DOCTOR_OUTPUT+="[INFO] $*\n"
+  _gui_update "[INFO] $*"
+}
+
+_doctor_check() {
+  local success_msg="$1" fail_msg="$2"
+  shift 2
+  if "$@" 2>/dev/null; then
+    _doctor_pass "${success_msg}"
+  else
+    _doctor_fail "${fail_msg}"
+  fi
+}
+
+_doctor_check_version() {
+  if [[ -n "${DECKY_LOADER_VERSION}" ]]; then
+    _doctor_pass "Installed version: ${DECKY_LOADER_VERSION} (${DECKY_LOADER_INSTALLED_RELEASE_TYPE:-unknown})"
+  else
+    _doctor_fail "No installed version detected"
+  fi
+}
+
+_doctor_check_cef() {
+  local found=false
+  for cef in "${CEF_PATHS[@]}"; do
+    [[ -f "${cef}" ]] && found=true && break
+  done
+  if [[ "${found}" == true ]]; then
+    _doctor_pass "CEF remote debugging enabled"
+  else
+    _doctor_warn "CEF remote debugging file not found"
+  fi
+}
+
+_doctor_check_port() {
+  local port="$1" name="$2"
+  if ! _has_command ss; then
+    _doctor_warn "ss not available, skipping port ${port} check"
+    return
+  fi
+  if ss -ltn "( sport = :${port} )" 2>/dev/null | grep -q .; then
+    _doctor_pass "${name} listening on port ${port}"
+  else
+    _doctor_fail "${name} not listening on port ${port}"
+  fi
+}
+
+_doctor_check_backend() {
+  if ! _has_command curl; then
+    _doctor_warn "curl not available, skipping backend check"
+    return
+  fi
+  if curl --silent --max-time 3 http://127.0.0.1:1337 >/dev/null 2>&1; then
+    _doctor_pass "Decky backend responding on port 1337"
+  else
+    _doctor_fail "Decky backend not responding on port 1337"
+  fi
+}
+
+_doctor_show_logs() {
+  printf "%b█▓▒░ Recent Logs%b\n" "${CLR_BLUE}" "${CLR_NC}"
+  _DOCTOR_OUTPUT+="\n=== Recent Logs ===\n"
+  local logs
+  if logs=$(journalctl -u plugin_loader -n 15 --no-pager 2>/dev/null) && [[ -n "${logs}" ]]; then
+    printf "%s\n" "${logs}"
+    _DOCTOR_OUTPUT+="${logs}\n"
+  else
+    _doctor_warn "No logs available"
+  fi
+}
+
+doctor() {
+  local -   # snapshot shell options; restored automatically on return
+  set +e
+  _DOCTOR_OUTPUT=""
+  printf "%b█▓▒░ Decky Doctor%b\n" "${CLR_BLUE}" "${CLR_NC}"
+  _DOCTOR_OUTPUT+="=== Decky Doctor ===\n"
+  _doctor_info "Running Decky Loader health checks..."
+  printf "\n"
+
+  local plugin_loader="${HOMEBREW_FOLDER}/services/PluginLoader"
+
+  _doctor_check \
+    "PluginLoader binary found" \
+    "PluginLoader binary not found" \
+    test -f "${plugin_loader}"
+
+  _doctor_check \
+    "PluginLoader binary is executable" \
+    "PluginLoader binary is not executable" \
+    test -x "${plugin_loader}"
+
+  _doctor_check_version
+
+  _doctor_check \
+    "Plugins directory exists" \
+    "Plugins directory missing" \
+    test -d "${HOMEBREW_FOLDER}/plugins"
+
+  _doctor_check_cef
+
+  _doctor_check \
+    "plugin_loader.service installed" \
+    "plugin_loader.service missing" \
+    test -f "${PLUGIN_LOADER_SERVICE}"
+
+  _doctor_check \
+    "Service enabled" \
+    "Service not enabled" \
+    systemctl is-enabled plugin_loader.service >/dev/null 2>&1
+
+  _doctor_check \
+    "Service running" \
+    "Service not running" \
+    systemctl is-active plugin_loader.service >/dev/null 2>&1
+
+  if _has_command pgrep; then
+    _doctor_check \
+      "PluginLoader process detected" \
+      "PluginLoader process not detected" \
+      pgrep -x PluginLoader >/dev/null 2>&1
+  else
+    _doctor_warn "pgrep not available, skipping process check"
+  fi
+
+  _doctor_check_port 1337 "Decky backend"
+  _doctor_check_port 8080 "Steam CEF debugger"
+
+  _doctor_check_backend
+
+  _doctor_show_logs
+
+  if [[ "${IS_GUI:-false}" == true ]] && _has_command zenity; then
+    printf "%b" "${_DOCTOR_OUTPUT}" \
+      | zenity --text-info --title="Decky Doctor" \
+          --width=660 --height=520 \
+          --font="monospace 10" \
+          --ok-label="Close" 2>/dev/null || true
+  fi
 }
 main "$@"
