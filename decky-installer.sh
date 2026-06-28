@@ -236,7 +236,7 @@ _sudo() {
     return
   fi
 
-# Quiet probe — only checking capability, not running the real command
+  # Quiet probe — only checking capability, not running the real command
   if sudo -n true 2>/dev/null; then
     sudo "$@"
     return
@@ -392,7 +392,7 @@ cleanup_exit() {
   if [[ "${CHANGING_PASSWORD:-false}" == true && -n "${SUDO_PASS:-}" ]]; then
     printf '%s\n' "${SUDO_PASS}" | sudo -S -k passwd -d "${CURRENT_USER}" 2>/dev/null || true
   fi
-  test -d "${WORKDIR:-/dev/null}" && find "${WORKDIR}" -delete
+  [[ -d "${WORKDIR}" ]] && find "${WORKDIR}" -delete
   _gui_close
   if [[ "${IS_INTERACTIVE:-false}" == true ]]; then
     printf "█▓▒░ Press (A)/[Enter] to close terminal\n"
@@ -539,6 +539,8 @@ rollback() {
     [[ "${IS_INTERACTIVE}" == true ]] || _error "rollback requires a version argument in non-interactive mode."
     version=$(_select "Select version to roll back to:" "${versions[@]}") \
       || _error "No version selected."
+  else
+    _validate_version "${version}"
   fi
 
   local target_dir="${archive_dir}/${version}"
@@ -604,7 +606,7 @@ install() {
 install_setup_dirs() {
   _msg "Setting up directories in ${HOMEBREW_FOLDER}..."
   _sudo mkdir -p "${HOMEBREW_FOLDER}/services" "${HOMEBREW_FOLDER}/plugins"
-  _sudo chown -R "${CURRENT_USER}":"${CURRENT_USER}" "${HOMEBREW_FOLDER}"
+  _sudo chown -R "${CURRENT_USER}:" "${HOMEBREW_FOLDER}"
   _sudo chown -R 0:0 "${HOMEBREW_FOLDER}/services"
 }
 
@@ -778,10 +780,6 @@ _doctor_check_port() {
 }
 
 _doctor_check_backend() {
-  if ! _has_command curl; then
-    _doctor_warn "curl not available, skipping backend check"
-    return
-  fi
   if curl --silent --max-time 3 http://127.0.0.1:1337 >/dev/null 2>&1; then
     _doctor_pass "Decky backend responding on port 1337"
   else
