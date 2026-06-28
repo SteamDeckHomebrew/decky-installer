@@ -20,7 +20,7 @@ main() {
   fi
 }
 
-help(){
+help() {
   _msg 'Decky Installer Suite ░▒▓█
 Usage: decky-installer.sh [action] [args]
 
@@ -40,7 +40,7 @@ Environment:
   exit 0
 }
 
-preflight_checks(){
+preflight_checks() {
   # shellcheck source=/dev/null
   OS_NAME=$(. /etc/os-release 2>/dev/null; printf '%s' "${NAME:-unknown}")
   CURRENT_USER=$(id -un)
@@ -84,7 +84,7 @@ Current DeckyLoader version: ${DECKY_LOADER_VERSION:-none}
 Current DeckyLoader branch : ${DECKY_LOADER_INSTALLED_RELEASE_TYPE:-none}"
 }
 
-_defaults(){
+_defaults() {
   IS_GUI=false
   IS_INTERACTIVE=true
   CHANGING_PASSWORD=false
@@ -238,8 +238,9 @@ _sudo() {
     return
   fi
 
-  # Quiet probe — only checking capability, not running the real command
-  if sudo -n "$@" 2>/dev/null; then
+# Quiet probe — only checking capability, not running the real command
+  if sudo -n true 2>/dev/null; then
+    sudo "$@"
     return
   fi
 
@@ -598,20 +599,22 @@ install() {
   _msg "Decky Loader ${DECKY_LOADER_VERSION} installed successfully."
 }
 
-install_setup_dirs(){
+install_setup_dirs() {
   _msg "Setting up directories in ${HOMEBREW_FOLDER}..."
   _sudo mkdir -p "${HOMEBREW_FOLDER}/services" "${HOMEBREW_FOLDER}/plugins"
   _sudo chown -R "${CURRENT_USER}":"${CURRENT_USER}" "${HOMEBREW_FOLDER}"
   _sudo chown -R 0:0 "${HOMEBREW_FOLDER}/services"
 }
-install_prepare_steam(){
+
+install_prepare_steam() {
   _msg "Configuring Steam for remote debugging..."
   for cef in "${CEF_PATHS[@]}"; do
     [[ -d "$(dirname "${cef}")" ]] && touch "${cef}"
   done
   _msg "Steam remote debugging is enabled"
 }
-install_download_components(){
+
+install_download_components() {
   local release download_url raw
 
   if [[ -n "${DECKY_LOADER_TARGET_VERSION}" ]]; then
@@ -664,7 +667,8 @@ install_download_components(){
   printf "%s" "${DECKY_LOADER_VERSION}" > "${WORKDIR}/.loader.version"
   _msg "Download complete."
 }
-install_archive_components(){
+
+install_archive_components() {
   local archive_dir="${HOMEBREW_FOLDER}/archive/${DECKY_LOADER_VERSION}"
   [[ -f "${archive_dir}/PluginLoader" ]] && return 0
   _msg "Archiving artifacts to ${archive_dir}..."
@@ -678,7 +682,8 @@ install_archive_components(){
     cat "${WORKDIR}/plugin_loader-${DECKY_LOADER_RELEASE_TYPE}.service"
   } > "${archive_dir}/plugin_loader.service"
 }
-install_install_service(){
+
+install_install_service() {
   local archive_dir="${HOMEBREW_FOLDER}/archive/${DECKY_LOADER_VERSION}"
 
   if [[ -f "${PLUGIN_LOADER_SERVICE}" ]]; then
@@ -700,6 +705,7 @@ install_install_service(){
   _sudo systemctl enable --now plugin_loader
   _msg "Service plugin_loader enabled and started."
 }
+
 _DOCTOR_OUTPUT=""
 
 _doctor_pass() {
@@ -707,16 +713,19 @@ _doctor_pass() {
   _DOCTOR_OUTPUT+="[PASS] $*\n"
   _gui_update "[PASS] $*"
 }
+
 _doctor_fail() {
   printf "%b[FAIL]%b %s\n" "${CLR_RED}" "${CLR_NC}" "$*"
   _DOCTOR_OUTPUT+="[FAIL] $*\n"
   _gui_update "[FAIL] $*"
 }
+
 _doctor_warn() {
   printf "%b[WARN]%b %s\n" "${CLR_YELLOW}" "${CLR_NC}" "$*"
   _DOCTOR_OUTPUT+="[WARN] $*\n"
   _gui_update "[WARN] $*"
 }
+
 _doctor_info() {
   printf "%b[INFO]%b %s\n" "${CLR_CYAN}" "${CLR_NC}" "$*"
   _DOCTOR_OUTPUT+="[INFO] $*\n"
@@ -859,4 +868,5 @@ doctor() {
           --ok-label="Close" 2>/dev/null || true
   fi
 }
+
 main "$@"
