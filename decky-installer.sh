@@ -692,7 +692,9 @@ install_install_service(){
   _sudo cp "${archive_dir}/.loader.version" "${HOMEBREW_FOLDER}/services/.loader.version"
 
   _msg "Installing systemd unit..."
-  _sudo cp "${archive_dir}/plugin_loader.service" "${PLUGIN_LOADER_SERVICE}"
+  local tmp_unit="${WORKDIR}/plugin_loader.service"
+  sed "s|\${HOMEBREW_FOLDER}|${HOMEBREW_FOLDER}|g" "${archive_dir}/plugin_loader.service" > "${tmp_unit}"
+  _sudo cp "${tmp_unit}" "${PLUGIN_LOADER_SERVICE}"
   _sudo systemctl daemon-reload
   _msg "Enabling and starting plugin_loader..."
   _sudo systemctl enable --now plugin_loader
