@@ -59,12 +59,12 @@ preflight_checks() {
   _is_interactive || { IS_INTERACTIVE=false; IS_GUI=false; }
   preflight_check_systemd
   preflight_check_existing_install
-  preflight_actions
+  preflight_init_paths
   greeting
   preflight_print_summary
 }
 
-preflight_actions() {
+preflight_init_paths() {
   USER_HOME="$(getent passwd "${CURRENT_USER}" | cut -d: -f6)"
   HOMEBREW_FOLDER="${USER_HOME}/homebrew"
   WORKDIR="$(mktemp -d)"
@@ -200,9 +200,6 @@ _is_interactive() {
   [[ -t 0 ]]
 }
 
-_is_ssh() {
-  [[ -n "${SSH_CONNECTION:-}" || -n "${SSH_CLIENT:-}" || -n "${SSH_TTY:-}" ]]
-}
 
 _has_command() {
   command -v "$1" >/dev/null 2>&1
@@ -560,8 +557,7 @@ uninstall() {
 
 _rollback_prompt_version() {
   local -n _ref_version="$1"
-  local archive_dir="$2"
-  local -a versions=("${@:3}")
+  local -a versions=("${@:2}")
 
   if [[ "${IS_INTERACTIVE}" != true ]]; then
     _msg 'Usage: rollback <version>
@@ -592,7 +588,7 @@ rollback() {
   [[ "${#versions[@]}" -gt 0 ]] || _error "No archived versions found in ${archive_dir}."
 
   if [[ -z "${version}" ]]; then
-    _rollback_prompt_version version "${archive_dir}" "${versions[@]}"
+    _rollback_prompt_version version "${versions[@]}"
   else
     _validate_version "${version}"
   fi
@@ -606,7 +602,7 @@ rollback() {
   [[ -n "${DECKY_LOADER_RELEASE_TYPE}" ]] || DECKY_LOADER_RELEASE_TYPE="release"
 
   _msg "Rolling back to ${version} (${DECKY_LOADER_RELEASE_TYPE})..."
-  install_install_service
+  install_service
   doctor
   _msg "Rollback to ${version} complete."
 }
@@ -666,7 +662,7 @@ install() {
   install_prepare_steam
   install_download_components
   install_archive_components
-  install_install_service
+  install_service
   doctor
   _msg "Decky Loader ${DECKY_LOADER_VERSION} installed successfully."
 }
@@ -755,7 +751,7 @@ install_archive_components() {
   } > "${archive_dir}/plugin_loader.service"
 }
 
-install_install_service() {
+install_service() {
   local archive_dir="${HOMEBREW_FOLDER}/archive/${DECKY_LOADER_VERSION}"
 
   if [[ -f "${PLUGIN_LOADER_SERVICE}" ]]; then
