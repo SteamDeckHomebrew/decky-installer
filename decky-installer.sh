@@ -558,6 +558,21 @@ uninstall() {
   _msg "Decky Loader uninstalled."
 }
 
+_rollback_prompt_version() {
+  local -n _ref_version="$1"
+  local archive_dir="$2"
+  local -a versions=("${@:3}")
+
+  if [[ "${IS_INTERACTIVE}" != true ]]; then
+    _msg 'Usage: rollback <version>
+  version  Version tag to roll back to (e.g. v3.2.6)
+           Must already be present in ~/homebrew/archive/'
+    _error "rollback requires a version argument in non-interactive mode."
+  fi
+  _ref_version=$(_select "Select version to roll back to:" "${versions[@]}") \
+    || _error "No version selected."
+}
+
 rollback() {
   local version="${1:-}"
 
@@ -570,7 +585,6 @@ rollback() {
   [[ $# -gt 1 ]] && _error "rollback takes at most one argument (version); unexpected: ${*:2}"
 
   local archive_dir="${HOMEBREW_FOLDER}/archive"
-
   [[ -d "${archive_dir}" ]] || _error "No archive directory found at ${archive_dir}."
 
   local -a versions
@@ -578,14 +592,7 @@ rollback() {
   [[ "${#versions[@]}" -gt 0 ]] || _error "No archived versions found in ${archive_dir}."
 
   if [[ -z "${version}" ]]; then
-    if [[ "${IS_INTERACTIVE}" != true ]]; then
-      _msg 'Usage: rollback <version>
-  version  Version tag to roll back to (e.g. v3.2.6)
-           Must already be present in ~/homebrew/archive/'
-      _error "rollback requires a version argument in non-interactive mode."
-    fi
-    version=$(_select "Select version to roll back to:" "${versions[@]}") \
-      || _error "No version selected."
+    _rollback_prompt_version version "${archive_dir}" "${versions[@]}"
   else
     _validate_version "${version}"
   fi
