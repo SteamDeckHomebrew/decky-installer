@@ -31,7 +31,7 @@ Actions:
   cleanup [keep]                  Delete old archived versions (default: keep 3)
   export                          Export plugins/settings to ~/Downloads/decky-export-*.tar.gz
   import <archive> <strategy>     Restore from export; strategy: backup-wipe-import | merge-overwrite
-  doctor                          Run post-install health checks
+  doctor                          Run health checks on an existing installation
   help                            Show this message
 
 Environment:
@@ -617,7 +617,6 @@ rollback() {
 
   _msg "Rolling back to ${version} (${DECKY_LOADER_RELEASE_TYPE})..."
   install_service
-  doctor
   _msg "Rollback to ${version} complete."
 }
 
@@ -677,7 +676,6 @@ install() {
   install_download_components
   install_archive_components
   install_service
-  doctor
   _msg "Decky Loader ${DECKY_LOADER_VERSION} installed successfully."
 }
 
@@ -883,8 +881,9 @@ _doctor_show_logs() {
 doctor() {
   if [[ "${1:-}" == help ]]; then
     _msg 'Usage: doctor
-  Runs post-install health checks: binary, service state, CEF debugging,
-  port availability (1337, 8080), backend response, and shows recent logs.'
+  Diagnostic tool for an existing Decky installation.
+  Checks: binary, service state, CEF debugging, port availability (1337, 8080),
+  backend response, and shows recent logs.'
     return 0
   fi
   [[ $# -gt 0 ]] && _error "doctor takes no arguments."
