@@ -36,7 +36,10 @@ Actions:
 
 Environment:
   DECKY_LOADER_RELEASE_TYPE=prerelease   Install prerelease instead of stable
-  GITHUB_TOKEN=<token>                   Authenticate GitHub API calls (avoids 60 req/hr limit)'
+  GITHUB_TOKEN=<token>                   Authenticate GitHub API calls (avoids 60 req/hr limit)
+  HOMEBREW_FOLDER=<path>                 Override install location (default: ~/homebrew)
+  DECKY_CLEANUP_KEEP=<n>                 Default number of archived versions to keep (default: 3)
+  NO_COLOR=1                             Disable colored output'
   exit 0
 }
 
@@ -66,7 +69,7 @@ preflight_checks() {
 
 preflight_init_paths() {
   USER_HOME="$(getent passwd "${CURRENT_USER}" | cut -d: -f6)"
-  HOMEBREW_FOLDER="${USER_HOME}/homebrew"
+  HOMEBREW_FOLDER="${HOMEBREW_FOLDER:-${USER_HOME}/homebrew}"
   WORKDIR="$(mktemp -d)"
   _init_cef_paths
 }
@@ -103,7 +106,8 @@ _defaults() {
   HOMEBREW_FOLDER=""
   WORKDIR=""
   CEF_PATHS=()
-  if [[ -t 1 ]]; then
+  DECKY_CLEANUP_KEEP="${DECKY_CLEANUP_KEEP:-3}"
+  if [[ -t 1 && -z "${NO_COLOR:-}" ]]; then
     CLR_RED='\033[0;31m'
     CLR_GREEN='\033[0;32m'
     CLR_YELLOW='\033[1;33m'
@@ -620,11 +624,11 @@ rollback() {
 cleanup() {
   if [[ "${1:-}" == help ]]; then
     _msg 'Usage: cleanup [keep]
-  keep  Number of most-recent archived versions to retain (default: 3)'
+  keep  Number of most-recent archived versions to retain (default: $DECKY_CLEANUP_KEEP or 3)'
     return 0
   fi
   [[ $# -gt 1 ]] && _error "cleanup takes at most one argument (keep); unexpected: ${*:2}"
-  local keep="${1:-3}"
+  local keep="${1:-${DECKY_CLEANUP_KEEP}}"
   [[ "${keep}" =~ ^[0-9]+$ ]] || _error "cleanup: keep must be a non-negative integer; got: ${keep}"
   local archive_dir="${HOMEBREW_FOLDER}/archive"
   [[ -d "${archive_dir}" ]] || { _msg "No archive directory found."; return 0; }
