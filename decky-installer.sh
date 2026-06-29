@@ -3,7 +3,7 @@
 # Use _msg or _error for important messages
 # They show in both terminal and hui
 # printf for debug messages
-readonly SCRIPT_VERSION=2.0.0
+readonly SCRIPT_VERSION=2.1.0
 
 set -euo pipefail
 trap 'handle_err "${LINENO:-?}" "$?" "${BASH_COMMAND}"' ERR
@@ -211,6 +211,16 @@ _github_curl() {
   local -a auth=()
   [[ -n "${GITHUB_TOKEN:-}" ]] && auth=(-H "Authorization: Bearer ${GITHUB_TOKEN}")
   curl "${auth[@]}" "$@"
+}
+
+_github_api() {
+  local url="$1" context="${2:-GitHub API}"
+  local raw
+  raw=$(_github_curl -sSf "${url}") || _error "Failed to fetch ${context} from GitHub."
+  if jq -e '.message' <<< "${raw}" >/dev/null 2>&1; then
+    _error "GitHub API error: $(jq -r '.message' <<< "${raw}")"
+  fi
+  printf '%s' "${raw}"
 }
 
 handle_err() {
@@ -682,31 +692,33 @@ install_prepare_steam() {
   _msg "Steam remote debugging is enabled"
 }
 
+_fetch_release_by_version() {
+  local -n _ref_release="$1"
+  local version="$2"
+  _msg "Fetching release info for ${version}..."
+  _ref_release=$(_github_api "${DECKY_LOADER_BASE_URL}/releases/tags/${version}" "release ${version}")
+  DECKY_LOADER_RELEASE_TYPE=$(jq -r 'if .prerelease then "prerelease" else "release" end' <<< "${_ref_release}")
+}
+
+_fetch_latest_release() {
+  local -n _ref_release="$1"
+  local is_prerelease=false
+  [[ "${DECKY_LOADER_RELEASE_TYPE}" == prerelease ]] && is_prerelease=true
+  _msg "Fetching ${DECKY_LOADER_RELEASE_TYPE} release info..."
+  local raw
+  raw=$(_github_api "${DECKY_LOADER_BASE_URL}/releases" "release list")
+  _ref_release=$(jq -r --argjson pre "${is_prerelease}" 'first(.[] | select(.prerelease == $pre))' <<< "${raw}")
+  [[ -z "${_ref_release}" || "${_ref_release}" == null ]] && \
+    _error "No ${DECKY_LOADER_RELEASE_TYPE} release found."
+}
+
 install_download_components() {
-  local release download_url raw
+  local release
 
   if [[ -n "${DECKY_LOADER_TARGET_VERSION}" ]]; then
-    _msg "Fetching release info for ${DECKY_LOADER_TARGET_VERSION}..."
-    raw=$(_github_curl -sSf "${DECKY_LOADER_BASE_URL}/releases/tags/${DECKY_LOADER_TARGET_VERSION}") \
-      || _error "Failed to fetch release ${DECKY_LOADER_TARGET_VERSION} from GitHub."
-    if jq -e '.message' <<< "${raw}" >/dev/null 2>&1; then
-      _error "GitHub API error: $(jq -r '.message' <<< "${raw}")"
-    fi
-    release="${raw}"
-    DECKY_LOADER_RELEASE_TYPE=$(jq -r 'if .prerelease then "prerelease" else "release" end' <<< "${release}")
+    _fetch_release_by_version release "${DECKY_LOADER_TARGET_VERSION}"
   else
-    local is_prerelease=false
-    [[ "${DECKY_LOADER_RELEASE_TYPE}" == prerelease ]] && is_prerelease=true
-
-    _msg "Fetching ${DECKY_LOADER_RELEASE_TYPE} release info..."
-    raw=$(_github_curl -sSf "${DECKY_LOADER_BASE_URL}/releases") \
-      || _error "Failed to fetch release list from GitHub."
-    if jq -e '.message' <<< "${raw}" >/dev/null 2>&1; then
-      _error "GitHub API error: $(jq -r '.message' <<< "${raw}")"
-    fi
-    release=$(jq -r --argjson pre "${is_prerelease}" 'first(.[] | select(.prerelease == $pre))' <<< "${raw}")
-    [[ -z "${release}" || "${release}" == null ]] && \
-      _error "No ${DECKY_LOADER_RELEASE_TYPE} release found."
+    _fetch_latest_release release
   fi
 
   DECKY_LOADER_VERSION=$(jq -r '.tag_name' <<< "${release}")
@@ -719,6 +731,7 @@ install_download_components() {
     return 0
   fi
 
+  local download_url
   download_url=$(jq -r '.assets[].browser_download_url | select(endswith("PluginLoader"))' <<< "${release}")
   [[ -z "${download_url}" ]] && \
     _error "No PluginLoader asset found in ${DECKY_LOADER_RELEASE_TYPE} release ${DECKY_LOADER_VERSION}."
