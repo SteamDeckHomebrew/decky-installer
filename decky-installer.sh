@@ -407,6 +407,7 @@ export_decky() {
   Services and archived versions are excluded from the export.'
     return 0
   fi
+  [[ $# -gt 0 ]] && _error "export takes no arguments. Did you mean 'import'?"
   local timestamp downloads export_path
   timestamp=$(date '+%Y%m%dT%H%M%S%z')
   downloads="${USER_HOME}/Downloads"
@@ -436,6 +437,7 @@ import_decky() {
               merge-overwrite     Extract archive on top of existing data'
     return 0
   fi
+  [[ $# -gt 2 ]] && _error "import takes at most two arguments (archive, strategy); unexpected: ${*:3}"
 
   if [[ -z "${archive_path}" || -z "${strategy}" ]]; then
     if [[ "${IS_INTERACTIVE}" != true ]]; then
@@ -509,6 +511,7 @@ uninstall() {
   A backup export is created in ~/Downloads/ before removal.'
     return 0
   fi
+  [[ $# -gt 0 ]] && _error "uninstall takes no arguments."
   _confirm "This will permanently remove Decky Loader and all data in ${HOMEBREW_FOLDER}. Continue?" \
     || { _msg "Uninstall cancelled."; return 0; }
   if [[ -d "${HOMEBREW_FOLDER}" ]]; then
@@ -559,6 +562,7 @@ rollback() {
            Must already be present in ~/homebrew/archive/'
     return 0
   fi
+  [[ $# -gt 1 ]] && _error "rollback takes at most one argument (version); unexpected: ${*:2}"
 
   local archive_dir="${HOMEBREW_FOLDER}/archive"
 
@@ -601,7 +605,9 @@ cleanup() {
   keep  Number of most-recent archived versions to retain (default: 3)'
     return 0
   fi
+  [[ $# -gt 1 ]] && _error "cleanup takes at most one argument (keep); unexpected: ${*:2}"
   local keep="${1:-3}"
+  [[ "${keep}" =~ ^[0-9]+$ ]] || _error "cleanup: keep must be a non-negative integer; got: ${keep}"
   local archive_dir="${HOMEBREW_FOLDER}/archive"
   [[ -d "${archive_dir}" ]] || { _msg "No archive directory found."; return 0; }
 
@@ -640,6 +646,7 @@ install() {
            Set DECKY_LOADER_RELEASE_TYPE=prerelease to target prerelease channel'
     return 0
   fi
+  [[ $# -gt 1 ]] && _error "install takes at most one argument (version); unexpected: ${*:2}"
   [[ -n "${1:-}" ]] && DECKY_LOADER_TARGET_VERSION="$1"
   [[ -n "${DECKY_LOADER_TARGET_VERSION}" ]] && _validate_version "${DECKY_LOADER_TARGET_VERSION}"
   _msg "Installing Decky Loader (${DECKY_LOADER_TARGET_VERSION:-${DECKY_LOADER_RELEASE_TYPE}})..."
@@ -855,6 +862,7 @@ doctor() {
   port availability (1337, 8080), backend response, and shows recent logs.'
     return 0
   fi
+  [[ $# -gt 0 ]] && _error "doctor takes no arguments."
   local -   # snapshot shell options; restored automatically on return
   set +e
   _DOCTOR_OUTPUT=""
