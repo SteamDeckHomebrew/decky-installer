@@ -25,7 +25,7 @@ help() {
 Usage: decky-installer.sh [action] [args]
 
 Actions:
-  install [version]               Install Decky Loader (latest or specific version, e.g. v2.14.1)
+  install [version]               Install Decky Loader (latest or specific version, e.g. v3.2.6)
   uninstall                       Remove Decky Loader and all data
   rollback [version]              Roll back to an archived version
   cleanup [keep]                  Delete old archived versions (default: keep 3)
@@ -135,12 +135,12 @@ dispatch_action() {
 
   case "$ACTION" in
     install) install "$@" ;;
-    uninstall) uninstall ;;
+    uninstall) uninstall "$@" ;;
     rollback) rollback "$@" ;;
     cleanup) cleanup "$@" ;;
-    export) export_decky ;;
+    export) export_decky "$@" ;;
     import) import_decky "$@" ;;
-    doctor) doctor ;;
+    doctor) doctor "$@" ;;
     help|"") help ;;
     *) _error "Unknown action: $ACTION" ;;
   esac
@@ -401,6 +401,12 @@ cleanup_exit() {
 }
 
 export_decky() {
+  if [[ "${1:-}" == help ]]; then
+    _msg 'Usage: export
+  Archives Decky plugins and settings to ~/Downloads/decky-export-<timestamp>.tar.gz
+  Services and archived versions are excluded from the export.'
+    return 0
+  fi
   local timestamp downloads export_path
   timestamp=$(date '+%Y%m%dT%H%M%S%z')
   downloads="${USER_HOME}/Downloads"
@@ -422,9 +428,22 @@ import_decky() {
   local archive_path="${1:-}"
   local strategy="${2:-}"
 
+  if [[ "${archive_path}" == help ]]; then
+    _msg 'Usage: import <archive> <strategy>
+  archive   Path to a decky-export-*.tar.gz file
+  strategy  How to handle existing data:
+              backup-wipe-import  Export current data, wipe, then import
+              merge-overwrite     Extract archive on top of existing data'
+    return 0
+  fi
+
   if [[ -z "${archive_path}" || -z "${strategy}" ]]; then
-    [[ "${IS_INTERACTIVE}" == true ]] || \
+    if [[ "${IS_INTERACTIVE}" != true ]]; then
+      _msg 'Usage: import <archive> <strategy>
+  archive   Path to a decky-export-*.tar.gz file
+  strategy  backup-wipe-import | merge-overwrite'
       _error "import requires an archive path and strategy in non-interactive mode."
+    fi
 
     local source_choice
     source_choice=$(_select "Select archive source:" \
@@ -484,6 +503,12 @@ import_decky() {
 }
 
 uninstall() {
+  if [[ "${1:-}" == help ]]; then
+    _msg 'Usage: uninstall
+  Stops and removes Decky Loader, its systemd service, and all data in ~/homebrew/
+  A backup export is created in ~/Downloads/ before removal.'
+    return 0
+  fi
   _confirm "This will permanently remove Decky Loader and all data in ${HOMEBREW_FOLDER}. Continue?" \
     || { _msg "Uninstall cancelled."; return 0; }
   if [[ -d "${HOMEBREW_FOLDER}" ]]; then
@@ -527,6 +552,14 @@ uninstall() {
 
 rollback() {
   local version="${1:-}"
+
+  if [[ "${version}" == help ]]; then
+    _msg 'Usage: rollback <version>
+  version  Version tag to roll back to (e.g. v3.2.6)
+           Must already be present in ~/homebrew/archive/'
+    return 0
+  fi
+
   local archive_dir="${HOMEBREW_FOLDER}/archive"
 
   [[ -d "${archive_dir}" ]] || _error "No archive directory found at ${archive_dir}."
@@ -536,7 +569,12 @@ rollback() {
   [[ "${#versions[@]}" -gt 0 ]] || _error "No archived versions found in ${archive_dir}."
 
   if [[ -z "${version}" ]]; then
-    [[ "${IS_INTERACTIVE}" == true ]] || _error "rollback requires a version argument in non-interactive mode."
+    if [[ "${IS_INTERACTIVE}" != true ]]; then
+      _msg 'Usage: rollback <version>
+  version  Version tag to roll back to (e.g. v3.2.6)
+           Must already be present in ~/homebrew/archive/'
+      _error "rollback requires a version argument in non-interactive mode."
+    fi
     version=$(_select "Select version to roll back to:" "${versions[@]}") \
       || _error "No version selected."
   else
@@ -558,6 +596,11 @@ rollback() {
 }
 
 cleanup() {
+  if [[ "${1:-}" == help ]]; then
+    _msg 'Usage: cleanup [keep]
+  keep  Number of most-recent archived versions to retain (default: 3)'
+    return 0
+  fi
   local keep="${1:-3}"
   local archive_dir="${HOMEBREW_FOLDER}/archive"
   [[ -d "${archive_dir}" ]] || { _msg "No archive directory found."; return 0; }
@@ -587,10 +630,16 @@ cleanup() {
 _validate_version() {
   local version="$1"
   [[ "${version}" =~ ^v?[0-9][0-9A-Za-z.+-]*$ ]] \
-    || _error "Invalid version format: '${version}'. Expected e.g. v2.14.1"
+    || _error "Invalid version format: '${version}'. Expected e.g. v3.2.6"
 }
 
 install() {
+  if [[ "${1:-}" == help ]]; then
+    _msg 'Usage: install [version]
+  version  Specific version to install (e.g. v3.2.6); omit for latest stable
+           Set DECKY_LOADER_RELEASE_TYPE=prerelease to target prerelease channel'
+    return 0
+  fi
   [[ -n "${1:-}" ]] && DECKY_LOADER_TARGET_VERSION="$1"
   [[ -n "${DECKY_LOADER_TARGET_VERSION}" ]] && _validate_version "${DECKY_LOADER_TARGET_VERSION}"
   _msg "Installing Decky Loader (${DECKY_LOADER_TARGET_VERSION:-${DECKY_LOADER_RELEASE_TYPE}})..."
@@ -800,6 +849,12 @@ _doctor_show_logs() {
 }
 
 doctor() {
+  if [[ "${1:-}" == help ]]; then
+    _msg 'Usage: doctor
+  Runs post-install health checks: binary, service state, CEF debugging,
+  port availability (1337, 8080), backend response, and shows recent logs.'
+    return 0
+  fi
   local -   # snapshot shell options; restored automatically on return
   set +e
   _DOCTOR_OUTPUT=""
