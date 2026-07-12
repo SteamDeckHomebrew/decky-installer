@@ -126,7 +126,34 @@ else
 fi
 
 (
-echo "15" ; echo "# Creating file structure" ;
+echo "15" ; echo "# Finding latest $BRANCH";
+if [ "$BRANCH" = 'prerelease' ] ; then
+    RELEASE=$(curl -s 'https://api.github.com/repos/SteamDeckHomebrew/decky-loader/releases' | jq -r "first(.[] | select(.prerelease == "true"))")
+    VERSION=$(jq -r '.tag_name' <<< ${RELEASE} )
+    DOWNLOADURL=$(jq -r '.assets[].browser_download_url | select(endswith("PluginLoader"))' <<< ${RELEASE})
+else
+    # resolve the latest release without the GitHub API, which is rate-limited per IP (60 unauthenticated requests/hour)
+    VERSION=$(curl -sI 'https://github.com/SteamDeckHomebrew/decky-loader/releases/latest' | grep -i '^location:' | sed 's|.*/tag/||' | tr -d '\r')
+    DOWNLOADURL="https://github.com/SteamDeckHomebrew/decky-loader/releases/download/${VERSION}/PluginLoader"
+fi
+
+# abort while any existing install is still untouched; an empty VERSION/DOWNLOADURL usually means the GitHub API rate limit was hit (#16)
+if [ -z "$VERSION" ] || [ "$VERSION" = "null" ] || [ -z "$DOWNLOADURL" ]; then
+    zen_nospam --title="Decky Installer" --width=400 --height=100 --error --text="Could not find the latest $BRANCH on GitHub.\nThis usually means the GitHub API rate limit was hit, please try again later.\nNothing has been changed."
+    exit 1
+fi
+
+echo "30" ; echo "# Downloading version $VERSION" ;
+DOWNLOAD_TMP="$(mktemp)"
+# make another zenity prompt while downloading the PluginLoader file, I do not know how this works
+curl -f -L $DOWNLOADURL -o "$DOWNLOAD_TMP" 2>&1 | stdbuf -oL tr '\r' '\n' | sed -u 's/^ *\([0-9][0-9]*\).*\( [0-9].*$\)/\1\n#Download Speed\:\2/' | zen_nospam --progress --title "Downloading Decky" --text="Download Speed: 0" --width=300 --height=100 --auto-close --no-cancel
+if [ "${PIPESTATUS[0]}" -ne 0 ] || [ ! -s "$DOWNLOAD_TMP" ]; then
+    rm -f "$DOWNLOAD_TMP"
+    zen_nospam --title="Decky Installer" --width=400 --height=100 --error --text="Downloading Decky failed.\nNothing has been changed."
+    exit 1
+fi
+
+echo "45" ; echo "# Creating file structure" ;
 rm -rf "${HOMEBREW_FOLDER}/services"
 sudo -u $SUDO_USER  mkdir -p "${HOMEBREW_FOLDER}/services"
 sudo -u $SUDO_USER  mkdir -p "${HOMEBREW_FOLDER}/plugins"
@@ -134,19 +161,8 @@ sudo -u $SUDO_USER  touch "${USER_DIR}/.steam/steam/.cef-enable-remote-debugging
 # if installed as flatpak, put .cef-enable-remote-debugging there
 [ -d "${USER_DIR}/.var/app/com.valvesoftware.Steam/data/Steam/" ] && sudo -u $SUDO_USER touch "${USER_DIR}/.var/app/com.valvesoftware.Steam/data/Steam/.cef-enable-remote-debugging"
 
-echo "30" ; echo "# Finding latest $BRANCH";
-if [ "$BRANCH" = 'prerelease' ] ; then
-    RELEASE=$(curl -s 'https://api.github.com/repos/SteamDeckHomebrew/decky-loader/releases' | jq -r "first(.[] | select(.prerelease == "true"))")
-else
-    RELEASE=$(curl -s 'https://api.github.com/repos/SteamDeckHomebrew/decky-loader/releases' | jq -r "first(.[] | select(.prerelease == "false"))")
-fi
-VERSION=$(jq -r '.tag_name' <<< ${RELEASE} )
-DOWNLOADURL=$(jq -r '.assets[].browser_download_url | select(endswith("PluginLoader"))' <<< ${RELEASE})
-
-echo "45" ; echo "# Installing version $VERSION" ;
-# make another zenity prompt while downloading the PluginLoader file, I do not know how this works
-curl -L $DOWNLOADURL -o ${HOMEBREW_FOLDER}/services/PluginLoader 2>&1 | stdbuf -oL tr '\r' '\n' | sed -u 's/^ *\([0-9][0-9]*\).*\( [0-9].*$\)/\1\n#Download Speed\:\2/' | zen_nospam --progress --title "Downloading Decky" --text="Download Speed: 0" --width=300 --height=100 --auto-close --no-cancel
-chmod +x ${HOMEBREW_FOLDER}/services/PluginLoader
+mv "$DOWNLOAD_TMP" ${HOMEBREW_FOLDER}/services/PluginLoader
+chmod 755 ${HOMEBREW_FOLDER}/services/PluginLoader
 
 echo "60"; echo "Running SELinux fix if it is enabled"
 hash getenforce 2>/dev/null && getenforce | grep "Enforcing" >/dev/null && chcon -t bin_t ${HOMEBREW_FOLDER}/services/PluginLoader
