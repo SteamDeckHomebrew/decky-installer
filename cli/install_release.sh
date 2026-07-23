@@ -1,20 +1,5 @@
 #!/bin/sh
 
-IS_PRERELEASE=false
-
-# Assign release/prerelease variables
-if [ "$IS_PRERELEASE" = true ]; then
-    RELEASE_TYPE=prerelease
-    LOG_LEVEL=DEBUG
-    KILLMODE_STRING='KillMode=process'
-    TIMEOUTSTOP_STRING='TimeoutStopSec=15'
-else
-    RELEASE_TYPE=release
-    LOG_LEVEL=INFO
-    KILLMODE_STRING=''
-    TIMEOUTSTOP_STRING=''
-fi
-
 [ "$UID" -eq 0 ] || exec sudo "$0" "$@"
 
 # check if JQ is installed
@@ -39,7 +24,7 @@ then
     exit 1
 fi
 
-echo "Installing Steam Deck Plugin Loader ${RELEASE_TYPE}..."
+echo "Installing Steam Deck Plugin Loader release..."
 
 USER_DIR="$(getent passwd $SUDO_USER | cut -d: -f6)"
 HOMEBREW_FOLDER="${USER_DIR}/homebrew"
@@ -53,9 +38,9 @@ sudo -u $SUDO_USER touch "${USER_DIR}/.steam/steam/.cef-enable-remote-debugging"
 [ -d "${USER_DIR}/.var/app/com.valvesoftware.Steam/data/Steam/" ] && sudo -u $SUDO_USER touch "${USER_DIR}/.var/app/com.valvesoftware.Steam/data/Steam/.cef-enable-remote-debugging"
 
 # Download latest release and install it
-RELEASE_JSON=$(curl -s 'https://api.github.com/repos/SteamDeckHomebrew/decky-loader/releases' | jq -r "first(.[] | select(.prerelease == ${IS_PRERELEASE}))")
-VERSION=$(jq -r '.tag_name' <<< ${RELEASE_JSON} )
-DOWNLOADURL=$(jq -r '.assets[].browser_download_url | select(endswith("PluginLoader"))' <<< ${RELEASE_JSON})
+RELEASE=$(curl -s 'https://api.github.com/repos/SteamDeckHomebrew/decky-loader/releases' | jq -r "first(.[] | select(.prerelease == "false"))")
+VERSION=$(jq -r '.tag_name' <<< ${RELEASE} )
+DOWNLOADURL=$(jq -r '.assets[].browser_download_url | select(endswith("PluginLoader"))' <<< ${RELEASE})
 
 printf "Installing version %s...\n" "${VERSION}"
 curl -L $DOWNLOADURL --output ${HOMEBREW_FOLDER}/services/PluginLoader
@@ -72,7 +57,7 @@ systemctl --user disable plugin_loader 2> /dev/null
 systemctl stop plugin_loader 2> /dev/null
 systemctl disable plugin_loader 2> /dev/null
 
-curl -L https://raw.githubusercontent.com/SteamDeckHomebrew/decky-loader/main/dist/plugin_loader-${RELEASE_TYPE}.service  --output ${HOMEBREW_FOLDER}/services/plugin_loader-${RELEASE_TYPE}.service
+curl -L https://raw.githubusercontent.com/SteamDeckHomebrew/decky-loader/main/dist/plugin_loader-release.service  --output ${HOMEBREW_FOLDER}/services/plugin_loader-release.service
 
 cat > "${HOMEBREW_FOLDER}/services/plugin_loader-backup.service" <<- EOM
 [Unit]
@@ -82,31 +67,29 @@ After=network.target
 Type=simple
 User=root
 Restart=always
-${KILLMODE_STRING}
-${TIMEOUTSTOP_STRING}
 ExecStart=${HOMEBREW_FOLDER}/services/PluginLoader
 WorkingDirectory=${HOMEBREW_FOLDER}/services
 Environment=UNPRIVILEGED_PATH=${HOMEBREW_FOLDER}
 Environment=PRIVILEGED_PATH=${HOMEBREW_FOLDER}
-Environment=LOG_LEVEL=${LOG_LEVEL}
+Environment=LOG_LEVEL=INFO
 [Install]
 WantedBy=multi-user.target
 EOM
 
-if [[ -f "${HOMEBREW_FOLDER}/services/plugin_loader-${RELEASE_TYPE}.service" ]]; then
-    printf "Grabbed latest ${RELEASE_TYPE} service.\n"
-    sed -i -e "s|\${HOMEBREW_FOLDER}|${HOMEBREW_FOLDER}|" "${HOMEBREW_FOLDER}/services/plugin_loader-${RELEASE_TYPE}.service"
-    cp -f "${HOMEBREW_FOLDER}/services/plugin_loader-${RELEASE_TYPE}.service" "/etc/systemd/system/plugin_loader.service"
+if [[ -f "${HOMEBREW_FOLDER}/services/plugin_loader-release.service" ]]; then
+    printf "Grabbed latest release service.\n"
+    sed -i -e "s|\${HOMEBREW_FOLDER}|${HOMEBREW_FOLDER}|" "${HOMEBREW_FOLDER}/services/plugin_loader-release.service"
+    cp -f "${HOMEBREW_FOLDER}/services/plugin_loader-release.service" "/etc/systemd/system/plugin_loader.service"
 else
-    printf "Could not curl latest ${RELEASE_TYPE} systemd service, using built-in service as a backup!\n"
+    printf "Could not curl latest release systemd service, using built-in service as a backup!\n"
     rm -f "/etc/systemd/system/plugin_loader.service"
     cp "${HOMEBREW_FOLDER}/services/plugin_loader-backup.service" "/etc/systemd/system/plugin_loader.service"
 fi
 
 mkdir -p ${HOMEBREW_FOLDER}/services/.systemd
-cp ${HOMEBREW_FOLDER}/services/plugin_loader-${RELEASE_TYPE}.service ${HOMEBREW_FOLDER}/services/.systemd/plugin_loader-${RELEASE_TYPE}.service
+cp ${HOMEBREW_FOLDER}/services/plugin_loader-release.service ${HOMEBREW_FOLDER}/services/.systemd/plugin_loader-release.service
 cp ${HOMEBREW_FOLDER}/services/plugin_loader-backup.service ${HOMEBREW_FOLDER}/services/.systemd/plugin_loader-backup.service
-rm ${HOMEBREW_FOLDER}/services/plugin_loader-backup.service ${HOMEBREW_FOLDER}/services/plugin_loader-${RELEASE_TYPE}.service
+rm ${HOMEBREW_FOLDER}/services/plugin_loader-backup.service ${HOMEBREW_FOLDER}/services/plugin_loader-release.service
 
 systemctl daemon-reload
 systemctl start plugin_loader
