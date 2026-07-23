@@ -59,7 +59,7 @@ preflight_checks() {
   if _is_gui && _has_command zenity; then
     IS_GUI=true
   fi
-  _is_interactive || { IS_INTERACTIVE=false; IS_GUI=false; }
+  _is_interactive || IS_INTERACTIVE=false
   preflight_check_systemd
   preflight_check_existing_install
   preflight_init_paths
