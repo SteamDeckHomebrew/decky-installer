@@ -13,7 +13,7 @@ main() {
   _defaults
   [[ "${1:-}" == help ]] && help
   preflight_checks
-  if [[ "${IS_INTERACTIVE}" == true && $# -eq 0 ]]; then
+  if [[ ( "${IS_INTERACTIVE}" == true || "${IS_GUI}" == true ) && $# -eq 0 ]]; then
     interactive_menu
   else
     dispatch_action "$@"
@@ -64,8 +64,7 @@ preflight_checks() {
   preflight_check_existing_install
   preflight_init_paths
   preflight_check_steam
-  greeting
-  preflight_print_summary
+  preflight_show_dashboard
 }
 
 preflight_init_paths() {
@@ -83,10 +82,17 @@ preflight_check_steam() {
   [[ "${found}" == true ]] || _error "Steam installation not found for ${CURRENT_USER} (checked native and Flatpak paths). Install Steam and run it at least once before installing Decky Loader."
 }
 
-preflight_print_summary() {
+preflight_show_dashboard() {
   local elevated=false
   [[ "${EUID}" -eq 0 ]] && elevated=true
-  _msg "User       : ${CURRENT_USER}
+  local text
+  text="Decky Installer Suite ░▒▓█
+Version ${SCRIPT_VERSION}
+Script is downloaded from https://github.com/SteamDeckHomebrew/decky-installer
+
+It is a script for installing Decky Loader
+
+User       : ${CURRENT_USER}
 OS         : ${OS_NAME}
 Interactive: ${IS_INTERACTIVE}
 GUI        : ${IS_GUI}
@@ -94,6 +100,16 @@ Elevated   : ${elevated}
 Temp pass  : ${CHANGING_PASSWORD}
 Current DeckyLoader version: ${DECKY_LOADER_VERSION:-none}
 Current DeckyLoader branch : ${DECKY_LOADER_INSTALLED_RELEASE_TYPE:-none}"
+
+  _msg "${text}"
+
+  if [[ "${IS_GUI:-false}" == true ]] && _has_command zenity; then
+    printf '%s\n' "${text}" \
+      | zenity --text-info --title="Decky Installer" \
+          --width=640 --height=480 --font="monospace 10" \
+          --ok-label="Continue" 2>/dev/null \
+      || _error "Cancelled by user."
+  fi
 }
 
 _defaults() {
@@ -199,10 +215,6 @@ _msg() {
   if [[ "${IS_GUI:-false}" == true ]] && _has_command zenity; then
     _gui_update "${text}"
   fi
-}
-
-greeting() {
-  _msg "Decky Installer Suite ░▒▓█\nVersion ${SCRIPT_VERSION}\nScript is downloaded from https://github.com/SteamDeckHomebrew/decky-installer\n\nIt is a script for installing Decky Loader"
 }
 
 _is_gui() {
