@@ -63,6 +63,7 @@ preflight_checks() {
   preflight_check_systemd
   preflight_check_existing_install
   preflight_init_paths
+  preflight_check_steam
   greeting
   preflight_print_summary
 }
@@ -72,6 +73,14 @@ preflight_init_paths() {
   HOMEBREW_FOLDER="${HOMEBREW_FOLDER:-${USER_HOME}/homebrew}"
   WORKDIR="$(mktemp -d)"
   _init_cef_paths
+}
+
+preflight_check_steam() {
+  local cef found=false
+  for cef in "${CEF_PATHS[@]}"; do
+    [[ -d "$(dirname "${cef}")" ]] && found=true && break
+  done
+  [[ "${found}" == true ]] || _error "Steam installation not found for ${CURRENT_USER} (checked native and Flatpak paths). Install Steam and run it at least once before installing Decky Loader."
 }
 
 preflight_print_summary() {
