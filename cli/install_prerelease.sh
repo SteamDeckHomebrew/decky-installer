@@ -30,17 +30,28 @@ USER_DIR="$(getent passwd $SUDO_USER | cut -d: -f6)"
 HOMEBREW_FOLDER="${USER_DIR}/homebrew"
 
 # Create folder structure
-rm -rf "${HOMEBREW_FOLDER}/services"
-sudo -u $SUDO_USER mkdir -p "${HOMEBREW_FOLDER}/services"
 sudo -u $SUDO_USER mkdir -p "${HOMEBREW_FOLDER}/plugins"
 sudo -u $SUDO_USER touch "${USER_DIR}/.steam/steam/.cef-enable-remote-debugging"
 # if installed as flatpak, put .cef-enable-remote-debugging there
 [ -d "${USER_DIR}/.var/app/com.valvesoftware.Steam/data/Steam/" ] && sudo -u $SUDO_USER touch "${USER_DIR}/.var/app/com.valvesoftware.Steam/data/Steam/.cef-enable-remote-debugging"
 
+# Release assets are per CPU architecture; the installed binary is always PluginLoader
+case "$(uname -m)" in
+    aarch64|arm64) ASSET="PluginLoader-arm64" ;;
+    *) ASSET="PluginLoader" ;;
+esac
+
 # Download latest release and install it
 RELEASE=$(curl -s 'https://api.github.com/repos/SteamDeckHomebrew/decky-loader/releases' | jq -r "first(.[] | select(.prerelease == "true"))")
 VERSION=$(jq -r '.tag_name' <<< ${RELEASE} )
-DOWNLOADURL=$(jq -r '.assets[].browser_download_url | select(endswith("PluginLoader"))' <<< ${RELEASE})
+DOWNLOADURL=$(jq -r --arg asset "$ASSET" '.assets[] | select(.name == $asset) | .browser_download_url' <<< ${RELEASE})
+# Only replace the existing install once there is something to download
+if [ -z "$DOWNLOADURL" ]; then
+    echo "No Decky Loader pre-release with a $ASSET build was found, or GitHub could not be reached."
+    exit 1
+fi
+rm -rf "${HOMEBREW_FOLDER}/services"
+sudo -u $SUDO_USER mkdir -p "${HOMEBREW_FOLDER}/services"
 
 printf "Installing version %s...\n" "${VERSION}"
 curl -L $DOWNLOADURL --output ${HOMEBREW_FOLDER}/services/PluginLoader

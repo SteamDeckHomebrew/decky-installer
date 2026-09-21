@@ -127,21 +127,31 @@ fi
 
 (
 echo "15" ; echo "# Creating file structure" ;
-rm -rf "${HOMEBREW_FOLDER}/services"
-sudo -u $SUDO_USER  mkdir -p "${HOMEBREW_FOLDER}/services"
 sudo -u $SUDO_USER  mkdir -p "${HOMEBREW_FOLDER}/plugins"
 sudo -u $SUDO_USER  touch "${USER_DIR}/.steam/steam/.cef-enable-remote-debugging"
 # if installed as flatpak, put .cef-enable-remote-debugging there
 [ -d "${USER_DIR}/.var/app/com.valvesoftware.Steam/data/Steam/" ] && sudo -u $SUDO_USER touch "${USER_DIR}/.var/app/com.valvesoftware.Steam/data/Steam/.cef-enable-remote-debugging"
 
 echo "30" ; echo "# Finding latest $BRANCH";
+# Release assets are per CPU architecture; the installed binary is always PluginLoader
+case "$(uname -m)" in
+    aarch64|arm64) ASSET="PluginLoader-arm64" ;;
+    *) ASSET="PluginLoader" ;;
+esac
 if [ "$BRANCH" = 'prerelease' ] ; then
     RELEASE=$(curl -s 'https://api.github.com/repos/SteamDeckHomebrew/decky-loader/releases' | jq -r "first(.[] | select(.prerelease == "true"))")
 else
     RELEASE=$(curl -s 'https://api.github.com/repos/SteamDeckHomebrew/decky-loader/releases' | jq -r "first(.[] | select(.prerelease == "false"))")
 fi
 VERSION=$(jq -r '.tag_name' <<< ${RELEASE} )
-DOWNLOADURL=$(jq -r '.assets[].browser_download_url | select(endswith("PluginLoader"))' <<< ${RELEASE})
+DOWNLOADURL=$(jq -r --arg asset "$ASSET" '.assets[] | select(.name == $asset) | .browser_download_url' <<< ${RELEASE})
+# Only replace the existing install once there is something to download
+if [ -z "$DOWNLOADURL" ]; then
+    zen_nospam --title="Decky Installer" --width=300 --height=100 --error --text "No Decky Loader $BRANCH with a $ASSET build was found, or GitHub could not be reached."
+    exit 1
+fi
+rm -rf "${HOMEBREW_FOLDER}/services"
+sudo -u $SUDO_USER  mkdir -p "${HOMEBREW_FOLDER}/services"
 
 echo "45" ; echo "# Installing version $VERSION" ;
 # make another zenity prompt while downloading the PluginLoader file, I do not know how this works
