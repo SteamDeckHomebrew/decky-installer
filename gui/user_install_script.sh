@@ -67,7 +67,7 @@ USER_DIR="$(getent passwd $SUDO_USER | cut -d: -f6)"
 HOMEBREW_FOLDER="${USER_DIR}/homebrew"
 
 # if decky is already installed, then add 'uninstall' and 'wipe' option
-if [[ -f "${USER_DIR}/homebrew/services/PluginLoader" ]] ; then
+if [[ -f "${HOMEBREW_FOLDER}/services/PluginLoader" ]] ; then
     OPTION=$(zen_nospam --title="Decky Installer" --width=750 --height=400 --list --radiolist --text "Select Option:" --hide-header --column "Buttons" --column "Choice" --column "Info" \
     TRUE "update to latest release" "Recommended for stable steamos" \
     FALSE "update to latest prerelease" "Recommended for beta/preview steamos" \
