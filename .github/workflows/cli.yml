@@ -1,0 +1,33 @@
+name: CLI checks
+on:
+  workflow_call:
+  pull_request:
+  push:
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y bats shellcheck jq
+      - run: bash cli/test.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: standalone-cli
+          path: cli/dist/*.sh
+  systemd:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build isolated systemd test image
+        run: docker build -f cli/tests/Containerfile -t decky-cli-test .
+      - name: Exercise real service deployment and rollback
+        run: |
+          docker run -d --name decky-cli-test --privileged --cgroupns=private --tmpfs /run --tmpfs /run/lock decky-cli-test
+          docker exec decky-cli-test bash /workspace/cli/tests/systemd.sh
+      - name: Container diagnostics and cleanup
+        if: always()
+        run: |
+          docker exec decky-cli-test journalctl -u plugin_loader.service --no-pager || true
+          docker rm -f decky-cli-test || true

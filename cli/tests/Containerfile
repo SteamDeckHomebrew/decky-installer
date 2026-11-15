@@ -1,0 +1,11 @@
+FROM debian:bookworm-slim
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    systemd systemd-sysv sudo curl jq gcc libc6-dev procps ca-certificates \
+    && rm -rf /var/lib/apt/lists/* \
+    && useradd -m -d '/home/decky test' -s /bin/bash deckytest \
+    && printf 'deckytest ALL=(ALL) NOPASSWD: ALL\n' > /etc/sudoers.d/decky-test \
+    && touch /etc/decky-cli-test-container
+COPY cli /workspace/cli
+RUN bash /workspace/cli/build.sh
+STOPSIGNAL SIGRTMIN+3
+CMD ["/sbin/init"]
