@@ -145,6 +145,7 @@ else
 fi
 VERSION=$(jq -r '.tag_name' <<< ${RELEASE} )
 DOWNLOADURL=$(jq -r --arg asset "$ASSET" '.assets[] | select(.name == $asset) | .browser_download_url' <<< ${RELEASE})
+EXP_SHA256=$(jq -r --arg asset "$ASSET" '.assets[] | select(.name == $asset) | .digest' <<< ${RELEASE} | cut -d: -f2)
 # Only replace the existing install once there is something to download
 if [ -z "$DOWNLOADURL" ]; then
     zen_nospam --title="Decky Installer" --width=300 --height=100 --error --text "No Decky Loader $BRANCH with a $ASSET build was found, or GitHub could not be reached."
@@ -155,7 +156,15 @@ sudo -u $SUDO_USER  mkdir -p "${HOMEBREW_FOLDER}/services"
 
 echo "45" ; echo "# Installing version $VERSION" ;
 # make another zenity prompt while downloading the PluginLoader file, I do not know how this works
-curl -L $DOWNLOADURL -o ${HOMEBREW_FOLDER}/services/PluginLoader 2>&1 | stdbuf -oL tr '\r' '\n' | sed -u 's/^ *\([0-9][0-9]*\).*\( [0-9].*$\)/\1\n#Download Speed\:\2/' | zen_nospam --progress --title "Downloading Decky" --text="Download Speed: 0" --width=300 --height=100 --auto-close --no-cancel
+curl -L $DOWNLOADURL -o ${HOMEBREW_FOLDER}/services/PluginLoader.tmp 2>&1 | stdbuf -oL tr '\r' '\n' | sed -u 's/^ *\([0-9][0-9]*\).*\( [0-9].*$\)/\1\n#Download Speed\:\2/' | zen_nospam --progress --title "Downloading Decky" --text="Download Speed: 0" --width=300 --height=100 --auto-close --no-cancel
+DOWN_SHA256=$(openssl sha256 -r ${HOMEBREW_FOLDER}/services/PluginLoader.tmp | cut -w -f1)
+if [[ $"DOWN_SHA256" != $"EXP_SHA256" ]]; then
+    zen_nospam --title="Decky Installer" --width=300 --height=100 --error --text "The file downloaded doesn't match the returned hash from the server. GitHub might currently have issues, please retry or wait a little while."
+    rm ${HOMEBREW_FOLDER}/services/PluginLoader.tmp
+    exit 1
+fi
+
+mv ${HOMEBREW_FOLDER}/services/PluginLoader.tmp ${HOMEBREW_FOLDER}/services/PluginLoader
 chmod +x ${HOMEBREW_FOLDER}/services/PluginLoader
 
 echo "60"; echo "Running SELinux fix if it is enabled"
