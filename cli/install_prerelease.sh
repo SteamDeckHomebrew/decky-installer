@@ -41,32 +41,90 @@ case "$(uname -m)" in
     *) ASSET="PluginLoader" ;;
 esac
 
-# Download latest release and install it
-RELEASE=$(curl -s 'https://api.github.com/repos/SteamDeckHomebrew/decky-loader/releases' | jq -r "first(.[] | select(.prerelease == "true"))")
-VERSION=$(jq -r '.tag_name' <<< ${RELEASE} )
+# Check if pre-release is older version than latest stable release
+PRE=$(curl -s 'https://api.github.com/repos/SteamDeckHomebrew/decky-loader/releases' | jq -r "first(.[] | select(.prerelease == "true"))")
+REL=$(curl -s 'https://api.github.com/repos/SteamDeckHomebrew/decky-loader/releases' | jq -r "first(.[] | select(.prerelease == "false"))")
+
+PREVER=$(jq -r '.tag_name' <<< ${PRE} )
+RELVER=$(jq -r '.tag_name' <<< ${REL} )
+# PREVER="v3.3.4-pre2"
+# RELVER="v3.3.3"
+
+PREVERS=${PREVER%-*}
+RELVERS=${RELVER%-*}
+
+SORTVER=$(printf '%s\n' "$PREVERS" "$RELVERS" | sort -V -r | head -n1)
+
+if [[ $SORTVER == $RELVERS ]]; then
+    RELEASE=$REL
+    VERSION=$RELVER
+elif [[ $SORTVER == $PREVERS ]]; then
+    RELEASE=$PRE
+    VERSION=$PREVER
+else
+    ## Fallback to release version if we somehow get here
+    RELEASE=$REL
+    VERSION=$RELVER
+fi
+
+# Download most up-to-date release and install it
 DOWNLOADURL=$(jq -r --arg asset "$ASSET" '.assets[] | select(.name == $asset) | .browser_download_url' <<< ${RELEASE})
+DOWNLOADSIZE=$(jq -r --arg asset "$ASSET" '.assets[] | select(.name == $asset) | .size' <<< ${RELEASE})
+# DOWNLOADHASH=$(jq -r --arg asset "$ASSET" '.assets[] | select(.name == $asset) | .digest' <<< ${RELEASE})
 # Only replace the existing install once there is something to download
 if [ -z "$DOWNLOADURL" ]; then
     echo "No Decky Loader pre-release with a $ASSET build was found, or GitHub could not be reached."
     exit 1
 fi
-rm -rf "${HOMEBREW_FOLDER}/services"
-sudo -u $SUDO_USER mkdir -p "${HOMEBREW_FOLDER}/services"
 
-printf "Installing version %s...\n" "${VERSION}"
-curl -L $DOWNLOADURL --output ${HOMEBREW_FOLDER}/services/PluginLoader
-chmod +x ${HOMEBREW_FOLDER}/services/PluginLoader
+printf "Downloading version %s...\n" "${VERSION}"
 
-echo "Check for SELinux presence and if it is present, set the correct permission on the binary file..."
-hash getenforce 2>/dev/null && getenforce | grep "Enforcing" >/dev/null && chcon -t bin_t ${HOMEBREW_FOLDER}/services/PluginLoader
+# Download binary before removing any files
+curl -L $DOWNLOADURL --output ${HOMEBREW_FOLDER}/PluginLoaderDownload
 
-echo $VERSION > ${HOMEBREW_FOLDER}/services/.loader.version
+# Check binary size
+FILESIZE=$(du -b $HOMEBREW_FOLDER/PluginLoaderDownload | cut -f1)
+if [[ ! -s $HOMEBREW_FOLDER/PluginLoaderDownload ]]; then
+    printf "Failed to download version %s...\n" "${VERSION}"
+    printf "Downloaded binary is zero bytes."
+    exit 1
+elif [[ $FILESIZE != $DOWNLOADSIZE  ]]; then
+    printf "Failed to download version %s...\n" "${VERSION}"
+    printf "Downloaded binary is smaller than expected size."
+    exit 1
+fi
+
+# # Check binary hash TODO, implement hash files included with releases
+# FILEHASH=$(sha256sum ${HOMEBREW_FOLDER}/PluginLoaderDownload)
+# if [[ $FILEHASH != ${DOWNLOADHASH%:*} ]]; then
+#     printf "Failed to download version %s...\n" "${VERSION}"
+#     printf "Downloaded binary's hash is mismatched."
+#     exit 1
+# fi
+
+Stop services before deleting folder
 
 systemctl --user stop plugin_loader 2> /dev/null
 systemctl --user disable plugin_loader 2> /dev/null
 
 systemctl stop plugin_loader 2> /dev/null
 systemctl disable plugin_loader 2> /dev/null
+
+# Delete old folder and contents, make new folder owned by sudo
+rm -rf "${HOMEBREW_FOLDER}/services"
+sudo -u $SUDO_USER mkdir -p "${HOMEBREW_FOLDER}/services"
+
+printf "Installing version %s...\n" "${VERSION}"
+
+# Move and mark binary as executable
+mv ${HOMEBREW_FOLDER}/PluginLoaderDownload ${HOMEBREW_FOLDER}/services/PluginLoader
+chmod +x ${HOMEBREW_FOLDER}/services/PluginLoader
+
+# SELinux checks/fixes
+echo "Check for SELinux presence and if it is present, set the correct permission on the binary file..."
+hash getenforce 2>/dev/null && getenforce | grep "Enforcing" >/dev/null && chcon -t bin_t ${HOMEBREW_FOLDER}/services/PluginLoader
+
+echo $VERSION > ${HOMEBREW_FOLDER}/services/.loader.version
 
 curl -L https://raw.githubusercontent.com/SteamDeckHomebrew/decky-loader/main/dist/plugin_loader-prerelease.service  --output ${HOMEBREW_FOLDER}/services/plugin_loader-prerelease.service
 
