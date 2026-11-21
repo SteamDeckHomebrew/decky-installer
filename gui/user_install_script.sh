@@ -18,10 +18,10 @@ then
     exit 1
 fi
 
-# check if github.com is reachable
-if ! curl -Is https://github.com | head -1 | grep 200 > /dev/null
+# check if raw.githubusercontent.com is reachable
+if ! curl -Is https://raw.githubusercontent.com | head -1 | grep 301 > /dev/null
 then
-    echo "Github appears to be unreachable, you may not be connected to the internet"
+    echo "Your network has problems accessing raw.githubusercontent.com, please wait for a while and try again"
     exit 1
 fi
 
@@ -57,7 +57,7 @@ if (( $EUID != 0 )); then
     if ! [ $USER = "deck" ]; then
         zen_nospam --title="Decky Installer" --width=300 --height=100 --warning --text "You appear to not be on a deck.\nDecky should still mostly work, but you may not get full functionality."
     fi
-    
+
     echo "$PASS" | sudo -E -S -k bash "$0" "$@" # rerun script as root
     exit 1
 fi
