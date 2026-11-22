@@ -1,5 +1,9 @@
 #!/bin/sh
 
+# SHARED INSTALLER FILE FOR CLI INSTALLS OF DECKY, install.sh, install_release.sh, install_prerelease.sh MUST HAVE IDENTICAL CONTENTS
+
+FILENAME=$(basename "$0")
+
 [ "$UID" -eq 0 ] || exec sudo "$0" "$@"
 
 # check if JQ is installed
@@ -24,16 +28,20 @@ then
     exit 1
 fi
 
-echo "Installing Steam Deck Plugin Loader release..."
+if [[ $FILENAME =~ "prerelease" ]]; then
+    echo "Installing Decky Loader pre-release..."
+else
+    echo "Installing Decky Loader stable release..."
+fi
 
-USER_DIR="$(getent passwd $SUDO_USER | cut -d: -f6)"
+USER_DIR="$(getent passwd "$SUDO_USER" | cut -d: -f6)"
 HOMEBREW_FOLDER="${USER_DIR}/homebrew"
 
 # Create folder structure
-sudo -u $SUDO_USER mkdir -p "${HOMEBREW_FOLDER}/plugins"
-sudo -u $SUDO_USER touch "${USER_DIR}/.steam/steam/.cef-enable-remote-debugging"
+sudo -u "$SUDO_USER" mkdir -p "${HOMEBREW_FOLDER}/plugins"
+sudo -u "$SUDO_USER" touch "${USER_DIR}/.steam/steam/.cef-enable-remote-debugging"
 # if installed as flatpak, put .cef-enable-remote-debugging there
-[ -d "${USER_DIR}/.var/app/com.valvesoftware.Steam/data/Steam/" ] && sudo -u $SUDO_USER touch "${USER_DIR}/.var/app/com.valvesoftware.Steam/data/Steam/.cef-enable-remote-debugging"
+[ -d "${USER_DIR}/.var/app/com.valvesoftware.Steam/data/Steam/" ] && sudo -u "$SUDO_USER" touch "${USER_DIR}/.var/app/com.valvesoftware.Steam/data/Steam/.cef-enable-remote-debugging"
 
 # Release assets are per CPU architecture; the installed binary is always PluginLoader
 case "$(uname -m)" in
@@ -41,26 +49,72 @@ case "$(uname -m)" in
     *) ASSET="PluginLoader" ;;
 esac
 
-# Download latest release and install it
-RELEASE=$(curl -s 'https://api.github.com/repos/SteamDeckHomebrew/decky-loader/releases' | jq -r "first(.[] | select(.prerelease == "false"))")
-VERSION=$(jq -r '.tag_name' <<< ${RELEASE} )
-DOWNLOADURL=$(jq -r --arg asset "$ASSET" '.assets[] | select(.name == $asset) | .browser_download_url' <<< ${RELEASE})
+# Check what the file is being invoked by runner, then match expected behavior to support references to obsolete files
+if [[ $FILENAME =~ "prerelease" ]]; then
+    # Check if pre-release is older version than latest stable release
+    PRE=$(curl -s 'https://api.github.com/repos/SteamDeckHomebrew/decky-loader/releases' | jq -r "first(.[] | select(.prerelease == "true"))")
+    REL=$(curl -s 'https://api.github.com/repos/SteamDeckHomebrew/decky-loader/releases' | jq -r "first(.[] | select(.prerelease == "false"))")
+
+    PREVER=$(jq -r '.tag_name' <<< "${PRE}" )
+    RELVER=$(jq -r '.tag_name' <<< "${REL}" )
+
+    PREVERS=${PREVER%-*}
+    RELVERS=${RELVER%-*}
+
+    SORTVER=$(printf '%s\n' "$PREVERS" "$RELVERS" | sort -V -r | head -n1)
+
+    if [[ $SORTVER == "$RELVERS" ]]; then
+        RELEASE=$REL
+        VERSION=$RELVER
+    elif [[ $SORTVER == "$PREVERS" ]]; then
+        RELEASE=$PRE
+        VERSION=$PREVER
+    else
+        ## Fallback to release version if we somehow get here
+        RELEASE=$REL
+        VERSION=$RELVER
+    fi
+else
+    RELEASE=$(curl -s 'https://api.github.com/repos/SteamDeckHomebrew/decky-loader/releases' | jq -r "first(.[] | select(.prerelease == "false"))")
+    VERSION=$(jq -r '.tag_name' <<< "${RELEASE}")
+fi
+
+# Download most up-to-date release and install it
+DOWNLOADURL=$(jq -r --arg asset "$ASSET" '.assets[] | select(.name == $asset) | .browser_download_url' <<< "${RELEASE}")
+DOWNLOADSIZE=$(jq -r --arg asset "$ASSET" '.assets[] | select(.name == $asset) | .size' <<< "${RELEASE}")
+DOWNLOADHASH=$(jq -r --arg asset "$ASSET" '.assets[] | select(.name == $asset) | .digest' <<< "${RELEASE}")
 # Only replace the existing install once there is something to download
 if [ -z "$DOWNLOADURL" ]; then
-    echo "No Decky Loader release with a $ASSET build was found, or GitHub could not be reached."
+    echo "No Decky Loader pre-release with a $ASSET build was found, or GitHub could not be reached."
     exit 1
 fi
-rm -rf "${HOMEBREW_FOLDER}/services"
-sudo -u $SUDO_USER mkdir -p "${HOMEBREW_FOLDER}/services"
 
-printf "Installing version %s...\n" "${VERSION}"
-curl -L $DOWNLOADURL --output ${HOMEBREW_FOLDER}/services/PluginLoader
-chmod +x ${HOMEBREW_FOLDER}/services/PluginLoader
+printf "Downloading version %s...\n" "${VERSION}"
 
-echo "Check for SELinux presence and if it is present, set the correct permission on the binary file..."
-hash getenforce 2>/dev/null && getenforce | grep "Enforcing" >/dev/null && chcon -t bin_t ${HOMEBREW_FOLDER}/services/PluginLoader
+# Download binary before removing any files
+curl -L "$DOWNLOADURL" --output "${HOMEBREW_FOLDER}"/PluginLoaderDownload
 
-echo $VERSION > ${HOMEBREW_FOLDER}/services/.loader.version
+# Check binary size
+FILESIZE=$(du -b "$HOMEBREW_FOLDER"/PluginLoaderDownload | cut -f1)
+if [[ ! -s $HOMEBREW_FOLDER/PluginLoaderDownload ]]; then
+    printf "Failed to download version %s...\n" "${VERSION}"
+    printf "Downloaded binary is zero bytes."
+    exit 1
+elif [[ $FILESIZE != "$DOWNLOADSIZE"  ]]; then
+    printf "Failed to download version %s...\n" "${VERSION}"
+    printf "Downloaded binary is smaller than expected size."
+    exit 1
+fi
+
+# Check binary hash TODO, implement hash files included with releases
+FILEHASH=$(sha256sum "${HOMEBREW_FOLDER}"/PluginLoaderDownload)
+if [[ $FILEHASH != "${DOWNLOADHASH%:*}" ]]; then
+    printf "Failed to download version %s...\n" "${VERSION}"
+    printf "Downloaded binary's hash is mismatched."
+    exit 1
+fi
+
+# Stop services before deleting folder
 
 systemctl --user stop plugin_loader 2> /dev/null
 systemctl --user disable plugin_loader 2> /dev/null
@@ -68,7 +122,23 @@ systemctl --user disable plugin_loader 2> /dev/null
 systemctl stop plugin_loader 2> /dev/null
 systemctl disable plugin_loader 2> /dev/null
 
-curl -L https://raw.githubusercontent.com/SteamDeckHomebrew/decky-loader/main/dist/plugin_loader-release.service  --output ${HOMEBREW_FOLDER}/services/plugin_loader-release.service
+# Delete old folder and contents, make new folder owned by sudo
+rm -rf "${HOMEBREW_FOLDER}/services"
+sudo -u "$SUDO_USER" mkdir -p "${HOMEBREW_FOLDER}/services"
+
+printf "Installing version %s...\n" "${VERSION}"
+
+# Move and mark binary as executable
+mv "${HOMEBREW_FOLDER}"/PluginLoaderDownload "${HOMEBREW_FOLDER}"/services/PluginLoader
+chmod +x "${HOMEBREW_FOLDER}"/services/PluginLoader
+
+echo "$VERSION" > "${HOMEBREW_FOLDER}"/services/.loader.version
+
+# SELinux checks/fixes
+echo "Check for SELinux presence and if it is present, set the correct permission on the binary file..."
+hash getenforce 2>/dev/null && getenforce | grep "Enforcing" >/dev/null && chcon -t bin_t "${HOMEBREW_FOLDER}"/services/PluginLoader
+
+curl -L https://raw.githubusercontent.com/SteamDeckHomebrew/decky-loader/main/dist/plugin_loader-prerelease.service  --output "${HOMEBREW_FOLDER}"/services/plugin_loader-prerelease.service
 
 cat > "${HOMEBREW_FOLDER}/services/plugin_loader-backup.service" <<- EOM
 [Unit]
@@ -78,29 +148,31 @@ After=network.target
 Type=simple
 User=root
 Restart=always
+KillMode=process
+TimeoutStopSec=15
 ExecStart=${HOMEBREW_FOLDER}/services/PluginLoader
 WorkingDirectory=${HOMEBREW_FOLDER}/services
 Environment=UNPRIVILEGED_PATH=${HOMEBREW_FOLDER}
 Environment=PRIVILEGED_PATH=${HOMEBREW_FOLDER}
-Environment=LOG_LEVEL=INFO
+Environment=LOG_LEVEL=DEBUG
 [Install]
 WantedBy=multi-user.target
 EOM
 
-if [[ -f "${HOMEBREW_FOLDER}/services/plugin_loader-release.service" ]]; then
-    printf "Grabbed latest release service.\n"
-    sed -i -e "s|\${HOMEBREW_FOLDER}|${HOMEBREW_FOLDER}|" "${HOMEBREW_FOLDER}/services/plugin_loader-release.service"
-    cp -f "${HOMEBREW_FOLDER}/services/plugin_loader-release.service" "/etc/systemd/system/plugin_loader.service"
+if [[ -f "${HOMEBREW_FOLDER}/services/plugin_loader-prerelease.service" ]]; then
+    printf "Grabbed latest prerelease service.\n"
+    sed -i -e "s|\${HOMEBREW_FOLDER}|${HOMEBREW_FOLDER}|" "${HOMEBREW_FOLDER}/services/plugin_loader-prerelease.service"
+    cp -f "${HOMEBREW_FOLDER}/services/plugin_loader-prerelease.service" "/etc/systemd/system/plugin_loader.service"
 else
-    printf "Could not curl latest release systemd service, using built-in service as a backup!\n"
+    printf "Could not curl latest prerelease systemd service, using built-in service as a backup!\n"
     rm -f "/etc/systemd/system/plugin_loader.service"
     cp "${HOMEBREW_FOLDER}/services/plugin_loader-backup.service" "/etc/systemd/system/plugin_loader.service"
 fi
 
-mkdir -p ${HOMEBREW_FOLDER}/services/.systemd
-cp ${HOMEBREW_FOLDER}/services/plugin_loader-release.service ${HOMEBREW_FOLDER}/services/.systemd/plugin_loader-release.service
-cp ${HOMEBREW_FOLDER}/services/plugin_loader-backup.service ${HOMEBREW_FOLDER}/services/.systemd/plugin_loader-backup.service
-rm ${HOMEBREW_FOLDER}/services/plugin_loader-backup.service ${HOMEBREW_FOLDER}/services/plugin_loader-release.service
+mkdir -p "${HOMEBREW_FOLDER}"/services/.systemd
+cp "${HOMEBREW_FOLDER}"/services/plugin_loader-prerelease.service "${HOMEBREW_FOLDER}"/services/.systemd/plugin_loader-prerelease.service
+cp "${HOMEBREW_FOLDER}"/services/plugin_loader-backup.service "${HOMEBREW_FOLDER}"/services/.systemd/plugin_loader-backup.service
+rm "${HOMEBREW_FOLDER}"/services/plugin_loader-backup.service "${HOMEBREW_FOLDER}"/services/plugin_loader-prerelease.service
 
 systemctl daemon-reload
 systemctl start plugin_loader
