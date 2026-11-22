@@ -151,10 +151,9 @@ if [ -z "$DOWNLOADURL" ]; then
     zen_nospam --title="Decky Installer" --width=300 --height=100 --error --text "No Decky Loader $BRANCH with a $ASSET build was found, or GitHub could not be reached."
     exit 1
 fi
-rm -rf "${HOMEBREW_FOLDER}/services"
-sudo -u $SUDO_USER  mkdir -p "${HOMEBREW_FOLDER}/services"
 
-echo "45" ; echo "# Installing version $VERSION" ;
+echo "45" ; echo "# Downloading version $VERSION" ;
+
 # make another zenity prompt while downloading the PluginLoader file, I do not know how this works
 curl -L $DOWNLOADURL -o ${HOMEBREW_FOLDER}/services/PluginLoader.tmp 2>&1 | stdbuf -oL tr '\r' '\n' | sed -u 's/^ *\([0-9][0-9]*\).*\( [0-9].*$\)/\1\n#Download Speed\:\2/' | zen_nospam --progress --title "Downloading Decky" --text="Download Speed: 0" --width=300 --height=100 --auto-close --no-cancel
 DOWN_SHA256=$(openssl sha256 -r ${HOMEBREW_FOLDER}/services/PluginLoader.tmp | cut -w -f1)
@@ -164,22 +163,40 @@ if [[ $"DOWN_SHA256" != $"EXP_SHA256" ]]; then
     exit 1
 fi
 
-mv ${HOMEBREW_FOLDER}/services/PluginLoader.tmp ${HOMEBREW_FOLDER}/services/PluginLoader
-chmod +x ${HOMEBREW_FOLDER}/services/PluginLoader
+# Check binary size
+FILESIZE=$(du -b "$HOMEBREW_FOLDER"/services/PluginLoader.tmp | cut -f1)
+if [[ ! -s $HOMEBREW_FOLDER/PluginLoader.tmp ]]; then
+    zen_nospam --title="Decky Installer" --width=300 --height=100 --error --text "The file downloaded could not be created locally. Please check permissions on the folder and be aware that GitHub might currently have issues. Please retry or wait a little while."
+    rm ${HOMEBREW_FOLDER}/services/PluginLoader.tmp
+    exit 1
+elif [[ $FILESIZE != "$DOWNLOADSIZE"  ]]; then
+    zen_nospam --title="Decky Installer" --width=300 --height=100 --error --text "The file downloaded is larger/smaller than expected. GitHub might currently have issues, please retry or wait a little while."
+    rm ${HOMEBREW_FOLDER}/services/PluginLoader.tmp
+    exit 1
+fi
 
-echo "60"; echo "Running SELinux fix if it is enabled"
-hash getenforce 2>/dev/null && getenforce | grep "Enforcing" >/dev/null && chcon -t bin_t ${HOMEBREW_FOLDER}/services/PluginLoader
-
-echo $VERSION > ${HOMEBREW_FOLDER}/services/.loader.version
-
-echo "70" ; echo "# Killing plugin_loader if it exists" ;
+echo "45" ; echo "# Killing plugin_loader if it exists" ;
 systemctl --user stop plugin_loader 2> /dev/null
 systemctl --user disable plugin_loader 2> /dev/null
 systemctl stop plugin_loader 2> /dev/null
 systemctl disable plugin_loader 2> /dev/null
 
+rm -rf "${HOMEBREW_FOLDER}/services"
+sudo -u $SUDO_USER  mkdir -p "${HOMEBREW_FOLDER}/services"
+
+echo "50" ; echo "# Installing version $VERSION" ;
+
+mv ${HOMEBREW_FOLDER}/services/PluginLoader.tmp ${HOMEBREW_FOLDER}/services/PluginLoader
+chmod +x ${HOMEBREW_FOLDER}/services/PluginLoader
+
+echo $VERSION > ${HOMEBREW_FOLDER}/services/.loader.version
+
+echo "70"; echo "Running SELinux fix if it is enabled"
+hash getenforce 2>/dev/null && getenforce | grep "Enforcing" >/dev/null && chcon -t bin_t ${HOMEBREW_FOLDER}/services/PluginLoader
+
 echo "85" ; echo "# Setting up systemd" ;
 curl -L https://raw.githubusercontent.com/SteamDeckHomebrew/decky-loader/main/dist/plugin_loader-${BRANCH}.service  --output ${HOMEBREW_FOLDER}/services/plugin_loader-${BRANCH}.service
+
 cat > "${HOMEBREW_FOLDER}/services/plugin_loader-backup.service" <<- EOM
 [Unit]
 Description=SteamDeck Plugin Loader

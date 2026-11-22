@@ -92,11 +92,11 @@ fi
 printf "Downloading version %s...\n" "${VERSION}"
 
 # Download binary before removing any files
-curl -L "$DOWNLOADURL" --output "${HOMEBREW_FOLDER}"/PluginLoaderDownload
+curl -L "$DOWNLOADURL" --output "${HOMEBREW_FOLDER}"/PluginLoader.tmp
 
 # Check binary size
-FILESIZE=$(du -b "$HOMEBREW_FOLDER"/PluginLoaderDownload | cut -f1)
-if [[ ! -s $HOMEBREW_FOLDER/PluginLoaderDownload ]]; then
+FILESIZE=$(du -b "$HOMEBREW_FOLDER"/PluginLoader.tmp | cut -f1)
+if [[ ! -s $HOMEBREW_FOLDER/PluginLoader.tmp ]]; then
     printf "Failed to download version %s...\n" "${VERSION}"
     printf "Downloaded binary is zero bytes."
     exit 1
@@ -107,7 +107,7 @@ elif [[ $FILESIZE != "$DOWNLOADSIZE"  ]]; then
 fi
 
 # Check binary hash TODO, implement hash files included with releases
-FILEHASH=$(sha256sum "${HOMEBREW_FOLDER}"/PluginLoaderDownload)
+FILEHASH=$(sha256sum "${HOMEBREW_FOLDER}"/PluginLoader.tmp)
 if [[ $FILEHASH != "${DOWNLOADHASH%:*}" ]]; then
     printf "Failed to download version %s...\n" "${VERSION}"
     printf "Downloaded binary's hash is mismatched."
@@ -129,7 +129,7 @@ sudo -u "$SUDO_USER" mkdir -p "${HOMEBREW_FOLDER}/services"
 printf "Installing version %s...\n" "${VERSION}"
 
 # Move and mark binary as executable
-mv "${HOMEBREW_FOLDER}"/PluginLoaderDownload "${HOMEBREW_FOLDER}"/services/PluginLoader
+mv "${HOMEBREW_FOLDER}"/PluginLoader.tmp "${HOMEBREW_FOLDER}"/services/PluginLoader
 chmod +x "${HOMEBREW_FOLDER}"/services/PluginLoader
 
 echo "$VERSION" > "${HOMEBREW_FOLDER}"/services/.loader.version
@@ -177,3 +177,9 @@ rm "${HOMEBREW_FOLDER}"/services/plugin_loader-backup.service "${HOMEBREW_FOLDER
 systemctl daemon-reload
 systemctl start plugin_loader
 systemctl enable plugin_loader
+
+# this (retroactively) fixes a bug where users who ran the installer would have homebrew owned by root instead of their user
+if [ "$SUDO_USER" =  "deck" ]; then
+  sudo chown -R deck:deck "${HOMEBREW_FOLDER}"
+  sudo chown -R root:root "${HOMEBREW_FOLDER}"/services/*
+fi
