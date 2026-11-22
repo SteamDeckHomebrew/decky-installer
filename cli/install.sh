@@ -3,6 +3,14 @@
 # SHARED INSTALLER FILE FOR CLI INSTALLS OF DECKY, install.sh, install_release.sh, install_prerelease.sh MUST HAVE IDENTICAL CONTENTS
 
 FILENAME=$(basename "$0")
+RELARG="$1"
+DLPRE=false
+
+if [[ $FILENAME =~ "prerelease" ]]; then
+    DLPRE=true
+elif [[ $RELARG =~ "pre" ]]; then
+    DLPRE=true
+fi
 
 [ "$UID" -eq 0 ] || exec sudo "$0" "$@"
 
@@ -28,7 +36,7 @@ then
     exit 1
 fi
 
-if [[ $FILENAME =~ "prerelease" ]]; then
+if $DLPRE; then
     echo "Installing Decky Loader pre-release..."
 else
     echo "Installing Decky Loader stable release..."
@@ -50,7 +58,7 @@ case "$(uname -m)" in
 esac
 
 # Check what the file is being invoked by runner, then match expected behavior to support references to obsolete files
-if [[ $FILENAME =~ "prerelease" ]]; then
+if $DLPRE; then
     # Check if pre-release is older version than latest stable release
     PRE=$(curl -s 'https://api.github.com/repos/SteamDeckHomebrew/decky-loader/releases' | jq -r "first(.[] | select(.prerelease == "true"))")
     REL=$(curl -s 'https://api.github.com/repos/SteamDeckHomebrew/decky-loader/releases' | jq -r "first(.[] | select(.prerelease == "false"))")
@@ -92,7 +100,7 @@ fi
 printf "Downloading version %s...\n" "${VERSION}"
 
 # Download binary before removing any files
-curl -L "$DOWNLOADURL" --output "${HOMEBREW_FOLDER}"/PluginLoader.tmp
+curl -L "$DOWNLOADURL" --output ${HOMEBREW_FOLDER}/PluginLoader.tmp
 
 # Check binary size
 FILESIZE=$(du -b "$HOMEBREW_FOLDER"/PluginLoader.tmp | cut -f1)
@@ -107,8 +115,8 @@ elif [[ $FILESIZE != "$DOWNLOADSIZE"  ]]; then
 fi
 
 # Check binary hash TODO, implement hash files included with releases
-FILEHASH=$(sha256sum "${HOMEBREW_FOLDER}"/PluginLoader.tmp)
-if [[ $FILEHASH != "${DOWNLOADHASH%:*}" ]]; then
+FILEHASH=$(sha256sum ${HOMEBREW_FOLDER}/PluginLoader.tmp | sed 's, .*,,')
+if [[ $FILEHASH != ${DOWNLOADHASH#*:} ]]; then
     printf "Failed to download version %s...\n" "${VERSION}"
     printf "Downloaded binary's hash is mismatched."
     exit 1
@@ -138,7 +146,11 @@ echo "$VERSION" > "${HOMEBREW_FOLDER}"/services/.loader.version
 echo "Check for SELinux presence and if it is present, set the correct permission on the binary file..."
 hash getenforce 2>/dev/null && getenforce | grep "Enforcing" >/dev/null && chcon -t bin_t "${HOMEBREW_FOLDER}"/services/PluginLoader
 
-curl -L https://raw.githubusercontent.com/SteamDeckHomebrew/decky-loader/main/dist/plugin_loader-prerelease.service  --output "${HOMEBREW_FOLDER}"/services/plugin_loader-prerelease.service
+if $DLPRE; then
+    curl -L https://raw.githubusercontent.com/SteamDeckHomebrew/decky-loader/main/dist/plugin_loader-prerelease.service  --output "${HOMEBREW_FOLDER}"/services/plugin_loader-prerelease.service
+else
+    curl -L https://raw.githubusercontent.com/SteamDeckHomebrew/decky-loader/main/dist/plugin_loader-release.service  --output "${HOMEBREW_FOLDER}"/services/plugin_loader-release.service
+fi
 
 cat > "${HOMEBREW_FOLDER}/services/plugin_loader-backup.service" <<- EOM
 [Unit]
@@ -159,20 +171,39 @@ Environment=LOG_LEVEL=DEBUG
 WantedBy=multi-user.target
 EOM
 
-if [[ -f "${HOMEBREW_FOLDER}/services/plugin_loader-prerelease.service" ]]; then
-    printf "Grabbed latest prerelease service.\n"
-    sed -i -e "s|\${HOMEBREW_FOLDER}|${HOMEBREW_FOLDER}|" "${HOMEBREW_FOLDER}/services/plugin_loader-prerelease.service"
-    cp -f "${HOMEBREW_FOLDER}/services/plugin_loader-prerelease.service" "/etc/systemd/system/plugin_loader.service"
+if $DLPRE; then
+    if [[ -f "${HOMEBREW_FOLDER}/services/plugin_loader-prerelease.service" ]]; then
+        printf "Grabbed latest prerelease service.\n"
+        sed -i -e "s|\${HOMEBREW_FOLDER}|${HOMEBREW_FOLDER}|" "${HOMEBREW_FOLDER}/services/plugin_loader-prerelease.service"
+        cp -f "${HOMEBREW_FOLDER}/services/plugin_loader-prerelease.service" "/etc/systemd/system/plugin_loader.service"
+    else
+        printf "Could not curl latest prerelease systemd service, using built-in service as a backup!\n"
+        rm -f "/etc/systemd/system/plugin_loader.service"
+        cp "${HOMEBREW_FOLDER}/services/plugin_loader-backup.service" "/etc/systemd/system/plugin_loader.service"
+    fi
 else
-    printf "Could not curl latest prerelease systemd service, using built-in service as a backup!\n"
-    rm -f "/etc/systemd/system/plugin_loader.service"
-    cp "${HOMEBREW_FOLDER}/services/plugin_loader-backup.service" "/etc/systemd/system/plugin_loader.service"
+    if [[ -f "${HOMEBREW_FOLDER}/services/plugin_loader-release.service" ]]; then
+        printf "Grabbed latest release service.\n"
+        sed -i -e "s|\${HOMEBREW_FOLDER}|${HOMEBREW_FOLDER}|" "${HOMEBREW_FOLDER}/services/plugin_loader-release.service"
+        cp -f "${HOMEBREW_FOLDER}/services/plugin_loader-release.service" "/etc/systemd/system/plugin_loader.service"
+    else
+        printf "Could not curl latest release systemd service, using built-in service as a backup!\n"
+        rm -f "/etc/systemd/system/plugin_loader.service"
+        cp "${HOMEBREW_FOLDER}/services/plugin_loader-backup.service" "/etc/systemd/system/plugin_loader.service"
+    fi
 fi
 
 mkdir -p "${HOMEBREW_FOLDER}"/services/.systemd
-cp "${HOMEBREW_FOLDER}"/services/plugin_loader-prerelease.service "${HOMEBREW_FOLDER}"/services/.systemd/plugin_loader-prerelease.service
-cp "${HOMEBREW_FOLDER}"/services/plugin_loader-backup.service "${HOMEBREW_FOLDER}"/services/.systemd/plugin_loader-backup.service
-rm "${HOMEBREW_FOLDER}"/services/plugin_loader-backup.service "${HOMEBREW_FOLDER}"/services/plugin_loader-prerelease.service
+
+if $DLPRE; then
+    cp "${HOMEBREW_FOLDER}"/services/plugin_loader-prerelease.service "${HOMEBREW_FOLDER}"/services/.systemd/plugin_loader-prerelease.service
+    cp "${HOMEBREW_FOLDER}"/services/plugin_loader-backup.service "${HOMEBREW_FOLDER}"/services/.systemd/plugin_loader-backup.service
+    rm "${HOMEBREW_FOLDER}"/services/plugin_loader-backup.service "${HOMEBREW_FOLDER}"/services/plugin_loader-prerelease.service
+else
+    cp "${HOMEBREW_FOLDER}"/services/plugin_loader-release.service "${HOMEBREW_FOLDER}"/services/.systemd/plugin_loader-release.service
+    cp "${HOMEBREW_FOLDER}"/services/plugin_loader-backup.service "${HOMEBREW_FOLDER}"/services/.systemd/plugin_loader-backup.service
+    rm "${HOMEBREW_FOLDER}"/services/plugin_loader-backup.service "${HOMEBREW_FOLDER}"/services/plugin_loader-release.service
+fi
 
 systemctl daemon-reload
 systemctl start plugin_loader
