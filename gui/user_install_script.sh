@@ -145,6 +145,7 @@ else
 fi
 VERSION=$(jq -r '.tag_name' <<< ${RELEASE} )
 DOWNLOADURL=$(jq -r --arg asset "$ASSET" '.assets[] | select(.name == $asset) | .browser_download_url' <<< ${RELEASE})
+DOWNLOADSIZE=$(jq -r --arg asset "$ASSET" '.assets[] | select(.name == $asset) | .size' <<< "${RELEASE}")
 EXP_SHA256=$(jq -r --arg asset "$ASSET" '.assets[] | select(.name == $asset) | .digest' <<< ${RELEASE} | cut -d: -f2)
 # Only replace the existing install once there is something to download
 if [ -z "$DOWNLOADURL" ]; then
@@ -155,23 +156,23 @@ fi
 echo "45" ; echo "# Downloading version $VERSION" ;
 
 # make another zenity prompt while downloading the PluginLoader file, I do not know how this works
-curl -L $DOWNLOADURL -o ${HOMEBREW_FOLDER}/services/PluginLoader.tmp 2>&1 | stdbuf -oL tr '\r' '\n' | sed -u 's/^ *\([0-9][0-9]*\).*\( [0-9].*$\)/\1\n#Download Speed\:\2/' | zen_nospam --progress --title "Downloading Decky" --text="Download Speed: 0" --width=300 --height=100 --auto-close --no-cancel
-DOWN_SHA256=$(openssl sha256 -r ${HOMEBREW_FOLDER}/services/PluginLoader.tmp | cut -w -f1)
-if [[ $"DOWN_SHA256" != $"EXP_SHA256" ]]; then
+curl -L $DOWNLOADURL -o ${HOMEBREW_FOLDER}/PluginLoader.tmp 2>&1 | stdbuf -oL tr '\r' '\n' | sed -u 's/^ *\([0-9][0-9]*\).*\( [0-9].*$\)/\1\n#Download Speed\:\2/' | zen_nospam --progress --title "Downloading Decky" --text="Download Speed: 0" --width=300 --height=100 --auto-close --no-cancel
+DOWN_SHA256=$(openssl sha256 -r ${HOMEBREW_FOLDER}/PluginLoader.tmp | cut -w -f1)
+if [[ $DOWN_SHA256 != "$EXP_SHA256" ]]; then
     zen_nospam --title="Decky Installer" --width=300 --height=100 --error --text "The file downloaded doesn't match the returned hash from the server. GitHub might currently have issues, please retry or wait a little while."
-    rm ${HOMEBREW_FOLDER}/services/PluginLoader.tmp
+    rm ${HOMEBREW_FOLDER}/PluginLoader.tmp
     exit 1
 fi
 
 # Check binary size
-FILESIZE=$(du -b "$HOMEBREW_FOLDER"/services/PluginLoader.tmp | cut -f1)
+FILESIZE=$(du -b "$HOMEBREW_FOLDER"/PluginLoader.tmp | cut -f1)
 if [[ ! -s $HOMEBREW_FOLDER/PluginLoader.tmp ]]; then
     zen_nospam --title="Decky Installer" --width=300 --height=100 --error --text "The file downloaded could not be created locally. Please check permissions on the folder and be aware that GitHub might currently have issues. Please retry or wait a little while."
-    rm ${HOMEBREW_FOLDER}/services/PluginLoader.tmp
+    rm ${HOMEBREW_FOLDER}/PluginLoader.tmp
     exit 1
-elif [[ $FILESIZE != "$DOWNLOADSIZE"  ]]; then
-    zen_nospam --title="Decky Installer" --width=300 --height=100 --error --text "The file downloaded is larger/smaller than expected. GitHub might currently have issues, please retry or wait a little while."
-    rm ${HOMEBREW_FOLDER}/services/PluginLoader.tmp
+elif [[ $FILESIZE != "$DOWNLOADSIZE" ]]; then
+    zen_nospam --title="Decky Installer" --width=300 --height=100 --error --text "The file downloaded is larger or smaller than expected. GitHub might currently have issues, please retry or wait a little while."
+    rm ${HOMEBREW_FOLDER}/PluginLoader.tmp
     exit 1
 fi
 
@@ -186,7 +187,7 @@ sudo -u $SUDO_USER  mkdir -p "${HOMEBREW_FOLDER}/services"
 
 echo "50" ; echo "# Installing version $VERSION" ;
 
-mv ${HOMEBREW_FOLDER}/services/PluginLoader.tmp ${HOMEBREW_FOLDER}/services/PluginLoader
+mv ${HOMEBREW_FOLDER}/PluginLoader.tmp ${HOMEBREW_FOLDER}/services/PluginLoader
 chmod +x ${HOMEBREW_FOLDER}/services/PluginLoader
 
 echo $VERSION > ${HOMEBREW_FOLDER}/services/.loader.version
