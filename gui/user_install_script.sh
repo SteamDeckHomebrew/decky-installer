@@ -2,7 +2,7 @@
 
 # if a password was set by decky, this will run when the program closes
 temp_pass_cleanup() {
-  echo $PASS | sudo -S -k passwd -d deck
+  echo "$PASS" | sudo -S -k passwd -d deck
 }
 
 # removes unhelpful GTK warnings
@@ -54,7 +54,7 @@ if (( $EUID != 0 )); then
         done
     fi
 
-    if ! [ $USER = "deck" ]; then
+    if ! [ "$USER" = "deck" ]; then
         zen_nospam --title="Decky Installer" --width=300 --height=100 --warning --text "You appear to not be on a deck.\nDecky should still mostly work, but you may not get full functionality."
     fi
     
@@ -63,7 +63,7 @@ if (( $EUID != 0 )); then
 fi
 
 # all code below should be run as root
-USER_DIR="$(getent passwd $SUDO_USER | cut -d: -f6)"
+USER_DIR="$(getent passwd "$SUDO_USER" | cut -d: -f6)"
 HOMEBREW_FOLDER="${USER_DIR}/homebrew"
 
 # if decky is already installed, then add 'uninstall' and 'wipe' option
@@ -127,10 +127,10 @@ fi
 
 (
 echo "15" ; echo "# Creating file structure" ;
-sudo -u $SUDO_USER  mkdir -p "${HOMEBREW_FOLDER}/plugins"
-sudo -u $SUDO_USER  touch "${USER_DIR}/.steam/steam/.cef-enable-remote-debugging"
+sudo -u "$SUDO_USER"  mkdir -p "${HOMEBREW_FOLDER}/plugins"
+sudo -u "$SUDO_USER"  touch "${USER_DIR}/.steam/steam/.cef-enable-remote-debugging"
 # if installed as flatpak, put .cef-enable-remote-debugging there
-[ -d "${USER_DIR}/.var/app/com.valvesoftware.Steam/data/Steam/" ] && sudo -u $SUDO_USER touch "${USER_DIR}/.var/app/com.valvesoftware.Steam/data/Steam/.cef-enable-remote-debugging"
+[ -d "${USER_DIR}/.var/app/com.valvesoftware.Steam/data/Steam/" ] && sudo -u "$SUDO_USER" touch "${USER_DIR}/.var/app/com.valvesoftware.Steam/data/Steam/.cef-enable-remote-debugging"
 
 echo "30" ; echo "# Finding latest $BRANCH";
 # Release assets are per CPU architecture; the installed binary is always PluginLoader
@@ -143,25 +143,25 @@ if [ "$BRANCH" = 'prerelease' ] ; then
 else
     RELEASE=$(curl -s 'https://api.github.com/repos/SteamDeckHomebrew/decky-loader/releases' | jq -r "first(.[] | select(.prerelease == "false"))")
 fi
-VERSION=$(jq -r '.tag_name' <<< ${RELEASE} )
-DOWNLOADURL=$(jq -r --arg asset "$ASSET" '.assets[] | select(.name == $asset) | .browser_download_url' <<< ${RELEASE})
+VERSION=$(jq -r '.tag_name' <<< "${RELEASE}" )
+DOWNLOADURL=$(jq -r --arg asset "$ASSET" '.assets[] | select(.name == $asset) | .browser_download_url' <<< "${RELEASE}")
 # Only replace the existing install once there is something to download
 if [ -z "$DOWNLOADURL" ]; then
     zen_nospam --title="Decky Installer" --width=300 --height=100 --error --text "No Decky Loader $BRANCH with a $ASSET build was found, or GitHub could not be reached."
     exit 1
 fi
 rm -rf "${HOMEBREW_FOLDER}/services"
-sudo -u $SUDO_USER  mkdir -p "${HOMEBREW_FOLDER}/services"
+sudo -u "$SUDO_USER"  mkdir -p "${HOMEBREW_FOLDER}/services"
 
 echo "45" ; echo "# Installing version $VERSION" ;
 # make another zenity prompt while downloading the PluginLoader file, I do not know how this works
-curl -L $DOWNLOADURL -o ${HOMEBREW_FOLDER}/services/PluginLoader 2>&1 | stdbuf -oL tr '\r' '\n' | sed -u 's/^ *\([0-9][0-9]*\).*\( [0-9].*$\)/\1\n#Download Speed\:\2/' | zen_nospam --progress --title "Downloading Decky" --text="Download Speed: 0" --width=300 --height=100 --auto-close --no-cancel
-chmod +x ${HOMEBREW_FOLDER}/services/PluginLoader
+curl -L "$DOWNLOADURL" -o "${HOMEBREW_FOLDER}"/services/PluginLoader 2>&1 | stdbuf -oL tr '\r' '\n' | sed -u 's/^ *\([0-9][0-9]*\).*\( [0-9].*$\)/\1\n#Download Speed\:\2/' | zen_nospam --progress --title "Downloading Decky" --text="Download Speed: 0" --width=300 --height=100 --auto-close --no-cancel
+chmod +x "${HOMEBREW_FOLDER}"/services/PluginLoader
 
 echo "60"; echo "Running SELinux fix if it is enabled"
-hash getenforce 2>/dev/null && getenforce | grep "Enforcing" >/dev/null && chcon -t bin_t ${HOMEBREW_FOLDER}/services/PluginLoader
+hash getenforce 2>/dev/null && getenforce | grep "Enforcing" >/dev/null && chcon -t bin_t "${HOMEBREW_FOLDER}"/services/PluginLoader
 
-echo $VERSION > ${HOMEBREW_FOLDER}/services/.loader.version
+echo "$VERSION" > "${HOMEBREW_FOLDER}"/services/.loader.version
 
 echo "70" ; echo "# Killing plugin_loader if it exists" ;
 systemctl --user stop plugin_loader 2> /dev/null
@@ -170,7 +170,7 @@ systemctl stop plugin_loader 2> /dev/null
 systemctl disable plugin_loader 2> /dev/null
 
 echo "85" ; echo "# Setting up systemd" ;
-curl -L https://raw.githubusercontent.com/SteamDeckHomebrew/decky-loader/main/dist/plugin_loader-${BRANCH}.service  --output ${HOMEBREW_FOLDER}/services/plugin_loader-${BRANCH}.service
+curl -L https://raw.githubusercontent.com/SteamDeckHomebrew/decky-loader/main/dist/plugin_loader-${BRANCH}.service  --output "${HOMEBREW_FOLDER}"/services/plugin_loader-${BRANCH}.service
 cat > "${HOMEBREW_FOLDER}/services/plugin_loader-backup.service" <<- EOM
 [Unit]
 Description=SteamDeck Plugin Loader
@@ -199,10 +199,10 @@ else
     cp "${HOMEBREW_FOLDER}/services/plugin_loader-backup.service" "/etc/systemd/system/plugin_loader.service"
 fi
 
-mkdir -p ${HOMEBREW_FOLDER}/services/.systemd
-cp ${HOMEBREW_FOLDER}/services/plugin_loader-${BRANCH}.service ${HOMEBREW_FOLDER}/services/.systemd/plugin_loader-${BRANCH}.service
-cp ${HOMEBREW_FOLDER}/services/plugin_loader-backup.service ${HOMEBREW_FOLDER}/services/.systemd/plugin_loader-backup.service
-rm ${HOMEBREW_FOLDER}/services/plugin_loader-backup.service ${HOMEBREW_FOLDER}/services/plugin_loader-${BRANCH}.service
+mkdir -p "${HOMEBREW_FOLDER}"/services/.systemd
+cp "${HOMEBREW_FOLDER}"/services/plugin_loader-${BRANCH}.service "${HOMEBREW_FOLDER}"/services/.systemd/plugin_loader-${BRANCH}.service
+cp "${HOMEBREW_FOLDER}"/services/plugin_loader-backup.service "${HOMEBREW_FOLDER}"/services/.systemd/plugin_loader-backup.service
+rm "${HOMEBREW_FOLDER}"/services/plugin_loader-backup.service "${HOMEBREW_FOLDER}"/services/plugin_loader-${BRANCH}.service
 
 systemctl daemon-reload
 systemctl start plugin_loader

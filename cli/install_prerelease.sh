@@ -26,14 +26,14 @@ fi
 
 echo "Installing Steam Deck Plugin Loader pre-release..."
 
-USER_DIR="$(getent passwd $SUDO_USER | cut -d: -f6)"
+USER_DIR="$(getent passwd "$SUDO_USER" | cut -d: -f6)"
 HOMEBREW_FOLDER="${USER_DIR}/homebrew"
 
 # Create folder structure
-sudo -u $SUDO_USER mkdir -p "${HOMEBREW_FOLDER}/plugins"
-sudo -u $SUDO_USER touch "${USER_DIR}/.steam/steam/.cef-enable-remote-debugging"
+sudo -u "$SUDO_USER" mkdir -p "${HOMEBREW_FOLDER}/plugins"
+sudo -u "$SUDO_USER" touch "${USER_DIR}/.steam/steam/.cef-enable-remote-debugging"
 # if installed as flatpak, put .cef-enable-remote-debugging there
-[ -d "${USER_DIR}/.var/app/com.valvesoftware.Steam/data/Steam/" ] && sudo -u $SUDO_USER touch "${USER_DIR}/.var/app/com.valvesoftware.Steam/data/Steam/.cef-enable-remote-debugging"
+[ -d "${USER_DIR}/.var/app/com.valvesoftware.Steam/data/Steam/" ] && sudo -u "$SUDO_USER" touch "${USER_DIR}/.var/app/com.valvesoftware.Steam/data/Steam/.cef-enable-remote-debugging"
 
 # Release assets are per CPU architecture; the installed binary is always PluginLoader
 case "$(uname -m)" in
@@ -43,24 +43,24 @@ esac
 
 # Download latest release and install it
 RELEASE=$(curl -s 'https://api.github.com/repos/SteamDeckHomebrew/decky-loader/releases' | jq -r "first(.[] | select(.prerelease == "true"))")
-VERSION=$(jq -r '.tag_name' <<< ${RELEASE} )
-DOWNLOADURL=$(jq -r --arg asset "$ASSET" '.assets[] | select(.name == $asset) | .browser_download_url' <<< ${RELEASE})
+VERSION=$(jq -r '.tag_name' <<< "${RELEASE}" )
+DOWNLOADURL=$(jq -r --arg asset "$ASSET" '.assets[] | select(.name == $asset) | .browser_download_url' <<< "${RELEASE}")
 # Only replace the existing install once there is something to download
 if [ -z "$DOWNLOADURL" ]; then
     echo "No Decky Loader pre-release with a $ASSET build was found, or GitHub could not be reached."
     exit 1
 fi
 rm -rf "${HOMEBREW_FOLDER}/services"
-sudo -u $SUDO_USER mkdir -p "${HOMEBREW_FOLDER}/services"
+sudo -u "$SUDO_USER" mkdir -p "${HOMEBREW_FOLDER}/services"
 
 printf "Installing version %s...\n" "${VERSION}"
-curl -L $DOWNLOADURL --output ${HOMEBREW_FOLDER}/services/PluginLoader
-chmod +x ${HOMEBREW_FOLDER}/services/PluginLoader
+curl -L "$DOWNLOADURL" --output "${HOMEBREW_FOLDER}"/services/PluginLoader
+chmod +x "${HOMEBREW_FOLDER}"/services/PluginLoader
 
 echo "Check for SELinux presence and if it is present, set the correct permission on the binary file..."
-hash getenforce 2>/dev/null && getenforce | grep "Enforcing" >/dev/null && chcon -t bin_t ${HOMEBREW_FOLDER}/services/PluginLoader
+hash getenforce 2>/dev/null && getenforce | grep "Enforcing" >/dev/null && chcon -t bin_t "${HOMEBREW_FOLDER}"/services/PluginLoader
 
-echo $VERSION > ${HOMEBREW_FOLDER}/services/.loader.version
+echo "$VERSION" > "${HOMEBREW_FOLDER}"/services/.loader.version
 
 systemctl --user stop plugin_loader 2> /dev/null
 systemctl --user disable plugin_loader 2> /dev/null
@@ -68,7 +68,7 @@ systemctl --user disable plugin_loader 2> /dev/null
 systemctl stop plugin_loader 2> /dev/null
 systemctl disable plugin_loader 2> /dev/null
 
-curl -L https://raw.githubusercontent.com/SteamDeckHomebrew/decky-loader/main/dist/plugin_loader-prerelease.service  --output ${HOMEBREW_FOLDER}/services/plugin_loader-prerelease.service
+curl -L https://raw.githubusercontent.com/SteamDeckHomebrew/decky-loader/main/dist/plugin_loader-prerelease.service  --output "${HOMEBREW_FOLDER}"/services/plugin_loader-prerelease.service
 
 cat > "${HOMEBREW_FOLDER}/services/plugin_loader-backup.service" <<- EOM
 [Unit]
@@ -99,10 +99,10 @@ else
     cp "${HOMEBREW_FOLDER}/services/plugin_loader-backup.service" "/etc/systemd/system/plugin_loader.service"
 fi
 
-mkdir -p ${HOMEBREW_FOLDER}/services/.systemd
-cp ${HOMEBREW_FOLDER}/services/plugin_loader-prerelease.service ${HOMEBREW_FOLDER}/services/.systemd/plugin_loader-prerelease.service
-cp ${HOMEBREW_FOLDER}/services/plugin_loader-backup.service ${HOMEBREW_FOLDER}/services/.systemd/plugin_loader-backup.service
-rm ${HOMEBREW_FOLDER}/services/plugin_loader-backup.service ${HOMEBREW_FOLDER}/services/plugin_loader-prerelease.service
+mkdir -p "${HOMEBREW_FOLDER}"/services/.systemd
+cp "${HOMEBREW_FOLDER}"/services/plugin_loader-prerelease.service "${HOMEBREW_FOLDER}"/services/.systemd/plugin_loader-prerelease.service
+cp "${HOMEBREW_FOLDER}"/services/plugin_loader-backup.service "${HOMEBREW_FOLDER}"/services/.systemd/plugin_loader-backup.service
+rm "${HOMEBREW_FOLDER}"/services/plugin_loader-backup.service "${HOMEBREW_FOLDER}"/services/plugin_loader-prerelease.service
 
 systemctl daemon-reload
 systemctl start plugin_loader
