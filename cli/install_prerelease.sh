@@ -57,12 +57,13 @@ case "$(uname -m)" in
     *) ASSET="PluginLoader" ;;
 esac
 
+RELEASE_DATA=$(curl -s 'https://api.github.com/repos/SteamDeckHomebrew/decky-loader/releases')
+PRE=$(jq -r "first(.[] | select(.prerelease == "true"))" <<< "${RELEASE_DATA}")
+REL=$(jq -r "first(.[] | select(.prerelease == "false"))" <<< "${RELEASE_DATA}")
+
 # Check what the file is being invoked by runner, then match expected behavior to support references to obsolete files
 if $DLPRE; then
     # Check if pre-release is older version than latest stable release
-    PRE=$(curl -s 'https://api.github.com/repos/SteamDeckHomebrew/decky-loader/releases' | jq -r "first(.[] | select(.prerelease == "true"))")
-    REL=$(curl -s 'https://api.github.com/repos/SteamDeckHomebrew/decky-loader/releases' | jq -r "first(.[] | select(.prerelease == "false"))")
-
     PREVER=$(jq -r '.tag_name' <<< "${PRE}" )
     RELVER=$(jq -r '.tag_name' <<< "${REL}" )
 
@@ -83,7 +84,7 @@ if $DLPRE; then
         VERSION=$RELVER
     fi
 else
-    RELEASE=$(curl -s 'https://api.github.com/repos/SteamDeckHomebrew/decky-loader/releases' | jq -r "first(.[] | select(.prerelease == "false"))")
+    RELEASE=$REL
     VERSION=$(jq -r '.tag_name' <<< "${RELEASE}")
 fi
 
