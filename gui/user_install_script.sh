@@ -43,7 +43,8 @@ if (( $EUID != 0 )); then
         FINISHED="false"
         while [ "$FINISHED" != "true" ]; do
             PASS=$(zen_nospam --title="Decky Installer" --width=300 --height=100 --entry --hide-text --text="Enter your sudo/admin password")
-            if [[ $? -eq 1 ]] || [[ $? -eq 5 ]]; then
+            ZENITY_EXIT_CODE=$?
+            if [[ "${ZENITY_EXIT_CODE}" -eq 1 ]] || [[ "${ZENITY_EXIT_CODE}" -eq 5 ]]; then
                 exit 1
             fi
             if ( echo "$PASS" | sudo -S -k true ); then
@@ -78,8 +79,9 @@ else
     TRUE "release" "Recommended for stable steamos" \
     FALSE "prerelease" "Recommended for beta/preview steamos")
 fi
+ZENITY_EXIT_CODE=$?
 
-if [[ $? -eq 1 ]] || [[ $? -eq 5 ]]; then
+if [[ "${ZENITY_EXIT_CODE}" -eq 1 ]] || [[ "${ZENITY_EXIT_CODE}" -eq 5 ]]; then
     exit 1
 fi
 
