@@ -58,8 +58,8 @@ case "$(uname -m)" in
 esac
 
 RELEASE_DATA=$(curl -s 'https://api.github.com/repos/SteamDeckHomebrew/decky-loader/releases')
-PRE=$(jq -r "first(.[] | select(.prerelease == "true"))" <<< "${RELEASE_DATA}")
-REL=$(jq -r "first(.[] | select(.prerelease == "false"))" <<< "${RELEASE_DATA}")
+PRE=$(jq -r 'first(.[] | select(.prerelease == true))' <<< "${RELEASE_DATA}")
+REL=$(jq -r 'first(.[] | select(.prerelease == false))' <<< "${RELEASE_DATA}")
 
 # Check what the file is being invoked by runner, then match expected behavior to support references to obsolete files
 if $DLPRE; then
@@ -101,7 +101,7 @@ fi
 printf "Downloading version %s...\n" "${VERSION}"
 
 # Download binary before removing any files
-curl -L "$DOWNLOADURL" --output ${HOMEBREW_FOLDER}/PluginLoader.tmp
+curl -L "$DOWNLOADURL" --output "${HOMEBREW_FOLDER}"/PluginLoader.tmp
 
 # Check binary size
 FILESIZE=$(du -b "$HOMEBREW_FOLDER"/PluginLoader.tmp | cut -f1)
@@ -116,8 +116,8 @@ elif [[ $FILESIZE != "$DOWNLOADSIZE"  ]]; then
 fi
 
 # Check binary hash TODO, implement hash files included with releases
-FILEHASH=$(sha256sum ${HOMEBREW_FOLDER}/PluginLoader.tmp | sed 's, .*,,')
-if [[ $FILEHASH != ${DOWNLOADHASH#*:} ]]; then
+FILEHASH=$(sha256sum "${HOMEBREW_FOLDER}"/PluginLoader.tmp | sed 's, .*,,')
+if [[ $FILEHASH != "${DOWNLOADHASH#*:}" ]]; then
     printf "Failed to download version %s...\n" "${VERSION}"
     printf "Downloaded binary's hash is mismatched."
     exit 1
