@@ -26,7 +26,7 @@ then
 fi
 
 # if the script is not root yet, get the password and rerun as root
-if (( $EUID != 0 )); then
+if (( EUID != 0 )); then
     PASS_STATUS=$(passwd -S deck 2> /dev/null)
     if [ "$PASS_STATUS" = "" ]; then
         echo "Deck user not found. Continuing anyway, as it probably just means user is on a non-steamos system."
