@@ -1,0 +1,44 @@
+name: "PR checks"
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: Lint shell scripts
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: ShellCheck
+        run: shellcheck --severity=warning cli/*.sh gui/*.sh
+
+  test:
+    name: Syntax check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Parse POSIX sh scripts
+        run: |
+          for f in cli/*.sh; do
+            echo "sh -n $f"
+            sh -n "$f"
+          done
+
+      - name: Parse bash scripts
+        run: |
+          for f in gui/*.sh; do
+            echo "bash -n $f"
+            bash -n "$f"
+          done
+
