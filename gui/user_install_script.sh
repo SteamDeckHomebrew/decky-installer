@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # if a password was set by decky, this will run when the program closes
 temp_pass_cleanup() {
