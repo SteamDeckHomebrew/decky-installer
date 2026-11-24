@@ -2,7 +2,7 @@
 
 # SHARED INSTALLER FILE FOR CLI INSTALLS OF DECKY, install.sh, install_release.sh, install_prerelease.sh MUST HAVE IDENTICAL CONTENTS
 
-[ "$UID" -eq 0 ] || exec sudo "$0" "$@"
+[ "$UID" -eq 0 ] || exec sudo "$0" -s -- "$@"
 
 FILENAME=$(basename "$0")
 RELARG="$1"
