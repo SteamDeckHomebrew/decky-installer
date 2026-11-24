@@ -3,18 +3,18 @@
 # SHARED INSTALLER FILE FOR CLI INSTALLS OF DECKY, install.sh, install_release.sh, install_prerelease.sh MUST HAVE IDENTICAL CONTENTS
 
 FILENAME=$(basename "$0")
-RELARG="$1"
+RELARG=$1
 DLPRE=0
 
 if [[ $FILENAME =~ "prerelease" ]]; then
-    echo "set to pre-release from filename";
     DLPRE=1
 elif [[ $RELARG =~ "pre" ]]; then
-    echo "set to pre-release from argument"
     DLPRE=1
 fi
 
-[ "$UID" -eq 0 ] || exec sudo "$0" "$@"
+shift;
+
+[ "$UID" -eq 0 ] || exec sudo "$0"
 
 # check if JQ is installed
 if ! command -v jq &> /dev/null
