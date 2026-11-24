@@ -4,14 +4,14 @@
 
 FILENAME=$(basename "$0")
 RELARG="$1"
-DLPRE=false
+DLPRE=0
 
 if [[ $FILENAME =~ "prerelease" ]]; then
     echo "set to pre-release from filename"
-    DLPRE=true
+    DLPRE=1
 elif [[ $RELARG =~ "pre" ]]; then
-echo "set to pre-release from argument"
-    DLPRE=true
+    echo "set to pre-release from argument"
+    DLPRE=1
 fi
 
 [ "$UID" -eq 0 ] || exec sudo "$0" "$@"
@@ -38,7 +38,7 @@ then
     exit 1
 fi
 
-if $DLPRE; then
+if [ $DLPRE == 1 ]; then
     echo "Installing Decky Loader pre-release..."
 else
     echo "Installing Decky Loader stable release..."
@@ -64,7 +64,7 @@ PRE=$(jq -r 'first(.[] | select(.prerelease == true))' <<< "${RELEASE_DATA}")
 REL=$(jq -r 'first(.[] | select(.prerelease == false))' <<< "${RELEASE_DATA}")
 
 # Check what the file is being invoked by runner, then match expected behavior to support references to obsolete files
-if $DLPRE; then
+if [ $DLPRE == 1 ]; then
     # Check if pre-release is older version than latest stable release
     PREVER=$(jq -r '.tag_name' <<< "${PRE}" )
     RELVER=$(jq -r '.tag_name' <<< "${REL}" )
@@ -149,7 +149,7 @@ echo "$VERSION" > "${HOMEBREW_FOLDER}"/services/.loader.version
 echo "Check for SELinux presence and if it is present, set the correct permission on the binary file..."
 hash getenforce 2>/dev/null && getenforce | grep "Enforcing" >/dev/null && chcon -t bin_t "${HOMEBREW_FOLDER}"/services/PluginLoader
 
-if $DLPRE; then
+if [ $DLPRE == 1 ]; then
     curl -L https://raw.githubusercontent.com/SteamDeckHomebrew/decky-loader/main/dist/plugin_loader-prerelease.service  --output "${HOMEBREW_FOLDER}"/services/plugin_loader-prerelease.service
 else
     curl -L https://raw.githubusercontent.com/SteamDeckHomebrew/decky-loader/main/dist/plugin_loader-release.service  --output "${HOMEBREW_FOLDER}"/services/plugin_loader-release.service
@@ -174,7 +174,7 @@ Environment=LOG_LEVEL=DEBUG
 WantedBy=multi-user.target
 EOM
 
-if $DLPRE; then
+if [ $DLPRE == 1 ]; then
     if [[ -f "${HOMEBREW_FOLDER}/services/plugin_loader-prerelease.service" ]]; then
         printf "Grabbed latest prerelease service.\n"
         sed -i -e "s|\${HOMEBREW_FOLDER}|${HOMEBREW_FOLDER}|" "${HOMEBREW_FOLDER}/services/plugin_loader-prerelease.service"
