@@ -7,8 +7,10 @@ RELARG="$1"
 DLPRE=false
 
 if [[ $FILENAME =~ "prerelease" ]]; then
+    echo "set to pre-release from filename"
     DLPRE=true
 elif [[ $RELARG =~ "pre" ]]; then
+echo "set to pre-release from argument"
     DLPRE=true
 fi
 
