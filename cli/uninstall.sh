@@ -1,10 +1,10 @@
-#!/bin/sh
+#!/usr/bin/env bash
 
 [ "$UID" -eq 0 ] || exec sudo "$0" "$@"
 
 echo "Uninstalling Steam Deck Plugin Loader..."
 
-USER_DIR="$(getent passwd $SUDO_USER | cut -d: -f6)"
+USER_DIR="$(getent passwd "$SUDO_USER" | cut -d: -f6)"
 HOMEBREW_FOLDER="${USER_DIR}/homebrew"
 
 # Disable and remove services
